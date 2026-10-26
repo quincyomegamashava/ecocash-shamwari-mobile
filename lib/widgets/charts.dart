@@ -4,85 +4,132 @@ import 'package:flutter/material.dart';
 import '../core/models/models.dart';
 import '../core/theme/shamwari_theme.dart';
 
-class WeekBars extends StatelessWidget {
+class WeekBars extends StatefulWidget {
   const WeekBars({super.key, required this.days});
 
   final List<SpendDay> days;
 
   @override
+  State<WeekBars> createState() => _WeekBarsState();
+}
+
+class _WeekBarsState extends State<WeekBars>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.value = 1;
+    } else if (_controller.value == 0 && !_controller.isAnimating) {
+      _controller.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final days = widget.days;
     if (days.isEmpty) return const SizedBox(height: 140);
     final maxY =
         days.map((day) => day.amountCents).reduce((a, b) => a > b ? a : b) /
         100;
+    final navy = palette.highContrast ? palette.orange : const Color(0xFF0E2A56);
+    final sky = palette.highContrast
+        ? palette.orange.withValues(alpha: 0.45)
+        : const Color(0xFF7EB6FF);
     return SizedBox(
       height: 160,
-      child: BarChart(
-        BarChartData(
-          maxY: (maxY <= 0 ? 1 : maxY) * 1.3,
-          gridData: const FlGridData(show: false),
-          borderData: FlBorderData(show: false),
-          alignment: BarChartAlignment.spaceAround,
-          titlesData: FlTitlesData(
-            leftTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            topTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            rightTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 28,
-                getTitlesWidget: (value, meta) {
-                  final index = value.toInt();
-                  if (index < 0 || index >= days.length) {
-                    return const SizedBox.shrink();
-                  }
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      days[index].label,
-                      style: TextStyle(
-                        color: context.inkMuted,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          barGroups: [
-            for (var i = 0; i < days.length; i++)
-              BarChartGroupData(
-                x: i,
-                barRods: [
-                  BarChartRodData(
-                    toY: days[i].amountCents / 100,
-                    width: 16,
-                    borderRadius: BorderRadius.circular(20),
-                    color: days[i].peak
-                        ? (palette.highContrast
-                              ? palette.orange
-                              : (palette.lightGlass
-                                    ? palette.forest
-                                    : Colors.white))
-                        : (palette.lightGlass
-                              ? palette.forest.withValues(alpha: 0.16)
-                              : Colors.white.withValues(alpha: 0.28)),
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          return BarChart(
+            BarChartData(
+              maxY: (maxY <= 0 ? 1 : maxY) * 1.3,
+              gridData: const FlGridData(show: false),
+              borderData: FlBorderData(show: false),
+              alignment: BarChartAlignment.spaceAround,
+              titlesData: FlTitlesData(
+                leftTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 28,
+                    getTitlesWidget: (value, meta) {
+                      final index = value.toInt();
+                      if (index < 0 || index >= days.length) {
+                        return const SizedBox.shrink();
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          days[index].label,
+                          style: TextStyle(
+                            color: context.inkMuted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                ],
+                ),
               ),
-          ],
-        ),
+              barGroups: [
+                for (var i = 0; i < days.length; i++)
+                  BarChartGroupData(
+                    x: i,
+                    barRods: [
+                      BarChartRodData(
+                        toY: _grown(i, days[i].amountCents / 100),
+                        width: 16,
+                        borderRadius: BorderRadius.circular(8),
+                        rodStackItems: [
+                          BarChartRodStackItem(
+                            0,
+                            _grown(i, days[i].amountCents / 100) * 0.62,
+                            navy,
+                          ),
+                          BarChartRodStackItem(
+                            _grown(i, days[i].amountCents / 100) * 0.62,
+                            _grown(i, days[i].amountCents / 100),
+                            sky,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+            duration: Duration.zero,
+          );
+        },
       ),
     );
+  }
+
+  double _grown(int index, double value) {
+    final start = (index * 0.08).clamp(0.0, 0.5);
+    final t = ((_controller.value - start) / (1 - start)).clamp(0.0, 1.0);
+    return value * Curves.easeOutCubic.transform(t);
   }
 }
 

@@ -220,6 +220,69 @@ class WalletSnapshot {
   }
 }
 
+class RiskReason {
+  const RiskReason({required this.code, required this.text});
+
+  final String code;
+  final String text;
+
+  factory RiskReason.fromJson(Map<String, dynamic> json) {
+    return RiskReason(code: asString(json['code']), text: asString(json['text']));
+  }
+}
+
+class TxnRisk {
+  const TxnRisk({
+    required this.score,
+    required this.level,
+    required this.reasons,
+    required this.requiresAck,
+    required this.acknowledged,
+    required this.channel,
+  });
+
+  const TxnRisk.none()
+    : score = null,
+      level = 'none',
+      reasons = const [],
+      requiresAck = false,
+      acknowledged = false,
+      channel = null;
+
+  final int? score;
+  final String level;
+  final List<RiskReason> reasons;
+  final bool requiresAck;
+  final bool acknowledged;
+  final String? channel;
+
+  bool get notable =>
+      level == 'medium' || level == 'high' || reasons.isNotEmpty;
+
+  TxnRisk acknowledge() {
+    return TxnRisk(
+      score: score,
+      level: level,
+      reasons: reasons,
+      requiresAck: false,
+      acknowledged: true,
+      channel: channel,
+    );
+  }
+
+  factory TxnRisk.fromJson(Map<String, dynamic> json) {
+    if (json.isEmpty) return const TxnRisk.none();
+    return TxnRisk(
+      score: asIntOrNull(json['score']),
+      level: asString(json['level'], 'none'),
+      reasons: mapList(json['reasons'], RiskReason.fromJson),
+      requiresAck: asBool(json['requires_ack']),
+      acknowledged: asBool(json['acknowledged']),
+      channel: asStringOrNull(json['channel']),
+    );
+  }
+}
+
 class Txn {
   const Txn({
     required this.id,
@@ -240,6 +303,7 @@ class Txn {
     required this.postedAt,
     this.name,
     this.initials,
+    this.risk = const TxnRisk.none(),
   });
 
   final int id;
@@ -260,10 +324,12 @@ class Txn {
   final String? postedAt;
   final String? name;
   final String? initials;
+  final TxnRisk risk;
 
   String get title => (name == null || name!.isEmpty) ? counterparty : name!;
 
   factory Txn.fromJson(Map<String, dynamic> json) {
+    final risk = json['risk'];
     return Txn(
       id: asInt(json['id']),
       reference: asString(json['reference']),
@@ -283,6 +349,7 @@ class Txn {
       postedAt: asStringOrNull(json['posted_at']),
       name: asStringOrNull(json['name']),
       initials: asStringOrNull(json['initials']),
+      risk: risk is Map ? TxnRisk.fromJson(asMap(risk)) : const TxnRisk.none(),
     );
   }
 }
@@ -609,17 +676,20 @@ class TransferResult {
     required this.outcome,
     required this.transaction,
     this.message = '',
+    this.warning = '',
   });
 
   final String outcome;
   final Txn transaction;
   final String message;
+  final String warning;
 
   factory TransferResult.fromJson(Map<String, dynamic> json) {
     return TransferResult(
       outcome: asString(json['outcome']),
       transaction: Txn.fromJson(asMap(json['transaction'])),
       message: asString(json['message']),
+      warning: asString(json['warning']),
     );
   }
 }
@@ -1579,6 +1649,219 @@ class LoginResult {
       tokenType: asString(json['token_type'], 'Bearer'),
       expiresAt: asString(json['expires_at']),
       user: UserAccount.fromJson(asMap(json['user'])),
+    );
+  }
+}
+
+class ImpactMetric {
+  const ImpactMetric({
+    required this.total,
+    required this.baseline,
+    required this.live,
+    required this.basis,
+  });
+
+  final int total;
+  final int baseline;
+  final int live;
+  final String basis;
+
+  String get label => basis.toUpperCase();
+
+  factory ImpactMetric.fromJson(Map<String, dynamic> json) {
+    return ImpactMetric(
+      total: asInt(json['total']),
+      baseline: asInt(json['baseline']),
+      live: asInt(json['live']),
+      basis: asString(json['basis'], 'simulated'),
+    );
+  }
+}
+
+class ImpactReport {
+  const ImpactReport({
+    required this.simulated,
+    required this.disclaimer,
+    required this.timeSavedMinutes,
+    required this.ticketsDeflected,
+    required this.scamsBlocked,
+    required this.transfersViaAi,
+  });
+
+  final bool simulated;
+  final String disclaimer;
+  final ImpactMetric timeSavedMinutes;
+  final ImpactMetric ticketsDeflected;
+  final ImpactMetric scamsBlocked;
+  final ImpactMetric transfersViaAi;
+
+  factory ImpactReport.fromJson(Map<String, dynamic> json) {
+    return ImpactReport(
+      simulated: asBool(json['simulated'], true),
+      disclaimer: asString(json['disclaimer']),
+      timeSavedMinutes: ImpactMetric.fromJson(asMap(json['time_saved_minutes'])),
+      ticketsDeflected: ImpactMetric.fromJson(asMap(json['tickets_deflected'])),
+      scamsBlocked: ImpactMetric.fromJson(asMap(json['scams_blocked'])),
+      transfersViaAi: ImpactMetric.fromJson(asMap(json['transfers_via_ai'])),
+    );
+  }
+}
+
+class ChannelReply {
+  const ChannelReply({required this.type, required this.body});
+
+  final String type;
+  final String body;
+
+  factory ChannelReply.fromJson(Map<String, dynamic> json) {
+    return ChannelReply(type: asString(json['type'], 'text'), body: asString(json['body']));
+  }
+}
+
+class ChannelTurn {
+  const ChannelTurn({
+    required this.sessionId,
+    required this.channel,
+    required this.serviceCode,
+    required this.message,
+    required this.continueSession,
+    required this.replies,
+  });
+
+  final String sessionId;
+  final String channel;
+  final String? serviceCode;
+  final String message;
+  final bool continueSession;
+  final List<ChannelReply> replies;
+
+  factory ChannelTurn.fromJson(Map<String, dynamic> json) {
+    return ChannelTurn(
+      sessionId: asString(json['session_id']),
+      channel: asString(json['channel']),
+      serviceCode: asStringOrNull(json['service_code']),
+      message: asString(json['message']),
+      continueSession: asBool(json['continue_session'], true),
+      replies: mapList(json['replies'], ChannelReply.fromJson),
+    );
+  }
+}
+
+class CopilotSuggestion {
+  const CopilotSuggestion({
+    required this.itemId,
+    required this.summary,
+    required this.contextText,
+    required this.drafts,
+    required this.nextAction,
+    required this.provider,
+    required this.offline,
+  });
+
+  final int itemId;
+  final String summary;
+  final String contextText;
+  final List<String> drafts;
+  final String nextAction;
+  final String provider;
+  final bool offline;
+
+  factory CopilotSuggestion.fromJson(Map<String, dynamic> json) {
+    return CopilotSuggestion(
+      itemId: asInt(json['item_id']),
+      summary: asString(json['summary']),
+      contextText: asString(json['context'], asString(json['customer_context'])),
+      drafts: asList(json['drafts']).map((item) => item.toString()).toList(),
+      nextAction: asString(json['next_action']),
+      provider: asString(json['provider'], 'mock'),
+      offline: asBool(json['offline'], true),
+    );
+  }
+}
+
+class CopilotCase {
+  const CopilotCase({
+    required this.item,
+    required this.suggestion,
+    required this.auditId,
+  });
+
+  final PulseItem item;
+  final CopilotSuggestion suggestion;
+  final int auditId;
+
+  factory CopilotCase.fromJson(Map<String, dynamic> json) {
+    return CopilotCase(
+      item: PulseItem.fromJson(asMap(json['case'])),
+      suggestion: CopilotSuggestion.fromJson(asMap(json['suggestion'])),
+      auditId: asInt(json['audit_id']),
+    );
+  }
+}
+
+class DecisionResult {
+  const DecisionResult({
+    required this.action,
+    required this.detail,
+    required this.sent,
+    required this.auditId,
+    required this.suggestion,
+  });
+
+  final String action;
+  final String detail;
+  final bool sent;
+  final int auditId;
+  final CopilotSuggestion suggestion;
+
+  factory DecisionResult.fromJson(Map<String, dynamic> json) {
+    return DecisionResult(
+      action: asString(json['action']),
+      detail: asString(json['detail']),
+      sent: asBool(json['sent']),
+      auditId: asInt(json['audit_id']),
+      suggestion: CopilotSuggestion.fromJson(asMap(json['suggestion'])),
+    );
+  }
+}
+
+class AuditEntry {
+  const AuditEntry({
+    required this.id,
+    required this.createdAt,
+    required this.actorName,
+    required this.actorRole,
+    required this.module,
+    required this.action,
+    required this.subjectType,
+    required this.subjectId,
+    required this.decision,
+    required this.detail,
+  });
+
+  final int id;
+  final String createdAt;
+  final String actorName;
+  final String actorRole;
+  final String module;
+  final String action;
+  final String subjectType;
+  final String subjectId;
+  final String decision;
+  final String detail;
+
+  factory AuditEntry.fromJson(Map<String, dynamic> json) {
+    return AuditEntry(
+      id: asInt(json['id']),
+      createdAt: asString(json['created_at']),
+      actorName: asString(json['actor_name']),
+      actorRole: asString(json['actor_role']),
+      module: asString(json['module']),
+      action: asString(json['action']),
+      subjectType: asString(json['subject_type']),
+      subjectId: asString(json['subject_id']),
+      decision: asString(json['decision']),
+      detail: asString(json['detail']),
     );
   }
 }

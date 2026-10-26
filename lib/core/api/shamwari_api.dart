@@ -34,10 +34,24 @@ abstract class ShamwariApi {
     int id, {
     required String confirmWord,
     required String pin,
+    bool riskAck = false,
   });
   Future<Txn> cancelTransfer(int id);
+  Future<TransferResult> prizeRiskTransfer();
+  Future<ImpactReport> impact();
+  Future<ChannelTurn> ussd({String? sessionId, String text = ''});
+  Future<ChannelTurn> chat({String? sessionId, String text = ''});
+  Future<CopilotCase> copilot(int itemId);
+  Future<CopilotCase> refreshCopilot(int itemId);
+  Future<DecisionResult> decidePulse(
+    int itemId, {
+    required String action,
+    String text = '',
+  });
+  Future<List<AuditEntry>> audit();
   Future<VoiceCatalog> voicePhrases();
   Future<VoiceInterpretation> interpretText(String text);
+  Future<VoiceInterpretation> interpretSample(String sampleId);
   Future<VoiceInterpretation> interpretAudio(
     Uint8List bytes,
     String filename, {
@@ -48,6 +62,7 @@ abstract class ShamwariApi {
     required int txnId,
     required String confirmWord,
     required String pin,
+    bool riskAck = false,
   });
   Future<CoachState> coach();
   Future<CoachReply> coachSend(String text);

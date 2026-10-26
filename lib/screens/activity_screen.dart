@@ -50,7 +50,6 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.palette;
     if (_loading) {
       return const Padding(
         padding: EdgeInsets.all(16),
@@ -65,7 +64,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
         children: [
           const SectionLabel('Money'),
-          Text('Activity', style: Theme.of(context).textTheme.headlineMedium),
+          Text('History', style: Theme.of(context).textTheme.headlineMedium),
           Text(
             'Newest first. Pending holds are not posted yet.',
             style: TextStyle(color: context.inkMuted),
@@ -76,45 +75,109 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
               title: 'No transactions',
               body: 'Send money and confirm it to see a row.',
             ),
-          for (final txn in _rows)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: GlassCard(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            txn.counterparty,
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                          Text(
-                            '${txn.reference} · ${txn.status} · ${txn.kind}',
-                            style: TextStyle(
-                              color: context.inkMuted,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
+          for (final txn in _rows) _HistoryCard(txn: txn),
+        ],
+      ),
+    );
+  }
+}
+
+class _HistoryCard extends StatelessWidget {
+  const _HistoryCard({required this.txn});
+
+  final Txn txn;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final sent = txn.outgoing != false && txn.kind != 'cash_in';
+    final when = txn.createdAt.replaceFirst('T', ' ').replaceFirst('Z', '');
+    final tone = txn.status == 'pending'
+        ? palette.warning
+        : sent
+        ? palette.danger
+        : palette.ok;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GlassCard(
+        padding: EdgeInsets.zero,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.fromLTRB(14, 8, 16, 8),
+                  decoration: BoxDecoration(
+                    color: palette.highContrast ? Colors.black : palette.forest,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(28),
+                      bottomRight: Radius.circular(18),
                     ),
-                    Text(
-                      txn.display,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: txn.status == 'pending'
-                            ? palette.warning
-                            : context.ink,
-                      ),
+                  ),
+                  child: Text(
+                    sent ? 'Sent' : 'Received',
+                    style: TextStyle(
+                      color: palette.highContrast ? palette.orange : Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
                     ),
-                  ],
+                  ),
                 ),
+                const Spacer(),
+                Padding(
+                  padding: const EdgeInsets.only(right: 14),
+                  child: Text(
+                    when,
+                    style: TextStyle(
+                      color: context.inkMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: palette.forest.withValues(alpha: 0.1),
+                    child: Text(
+                      txn.initials ?? txn.counterparty.characters.first,
+                      style: TextStyle(
+                        color: palette.forest,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          txn.counterparty,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        Text(
+                          '${txn.reference} · ${txn.status}',
+                          style: TextStyle(color: context.inkMuted, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    txn.display,
+                    style: TextStyle(fontWeight: FontWeight.w800, color: tone),
+                  ),
+                ],
               ),
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -34,7 +34,7 @@ The payment PIN for every synthetic customer is `2580`. Send it only to a confir
 
 Customer (`rudo`): wallet, transactions, activity, contacts, transfers, voice, coach, scam, receipts, accessibility.
 
-Care staff (`care`): pulse, onboarding buddy, ledger, AI log.
+Care staff (`care`): pulse, onboarding buddy, ledger, AI log, impact, copilot, and the audit log.
 
 Either signed-in role: health is public, and so is login. Merchants, search, demo progress, `/auth/me`, and `/auth/logout` accept either role.
 
@@ -75,7 +75,8 @@ Error:
 | `forbidden` | 403 | Wrong role, or a transfer owned by someone else |
 | `not_found` | 404 | Unknown id, sample, or path |
 | `validation` | 400 | Missing or unusable fields |
-| `transcript_empty` | 400 | Audio produced no text (mock mode always does this) |
+| `transcript_empty` | 400 | Audio produced no text. Unknown bytes do this in mock mode. A known demo clip does not |
+| `risk_ack_required` | 400 | High-risk transfer. Send `risk_ack: true`, then the yes word and PIN. Nothing was posted |
 | `need_yes` | 400 | Confirm word was not a yes word. Transfer stays pending |
 | `bad_pin` | 400 | PIN did not match. Transfer stays pending |
 | `insufficient` | 400 | Wallet no longer covers the hold |
@@ -1430,3 +1431,90 @@ Up to 30 rows, newest first. `provider` is `mock` or `caimex`.
 ## What the app should not send to the model
 
 Confirm is local. Interpret, coach, scam, receipts, pulse highlight, and onboarding do call the provider (or the mock stand-in). Scrubbing removes PIN, OTP, and password patterns plus Zimbabwe mobiles before those calls. Still keep the PIN field off those requests. The only bodies that should contain `pin` are the two confirm routes.
+
+## Demo Day additions
+
+Pending transfers now include `transaction.risk`:
+
+```json
+"risk": {
+  "score": 10,
+  "level": "low",
+  "reasons": [],
+  "requires_ack": false,
+  "acknowledged": false,
+  "channel": "api"
+}
+```
+
+`level` is `low`, `medium`, `high`, or `none` when the row was never scored. `reasons` is a list of `{code, text}`. Codes: `new_recipient`, `unusual_amount`, `odd_hour`, `rapid`, `flagged`, `scammy`. High risk (`requires_ack` true) stays pending until confirm is called with `risk_ack` true. The PIN is still checked only after that, and it is still not sent to a model.
+
+`POST /api/v1/voice/interpret` accepts `sample_id` (`tumira-5-tendai` or `thumela-5-tendai`) or multipart field `audio`. A matching demo clip is transcribed offline. Any other audio in mock mode returns `transcript_empty`.
+
+`GET /healthz` is outside `/api/v1`. It is public and returns `{"ok": true, "synthetic": true}` for a container health check.
+
+### GET /api/v1/impact
+
+Care staff. Demo figures. `simulated` is always true. Each metric has `total`, `baseline`, `live`, and `basis` (`simulated` or `simulated+live`).
+
+```json
+{
+  "ok": true,
+  "synthetic": true,
+  "data": {
+    "simulated": true,
+    "disclaimer": "Demo figures. The baseline is simulated from the synthetic pulse book.",
+    "time_saved_minutes": {"total": 180, "baseline": 180, "live": 0, "basis": "simulated"},
+    "tickets_deflected": {"total": 60, "baseline": 60, "live": 0, "basis": "simulated"},
+    "scams_blocked": {"total": 4, "baseline": 4, "live": 0, "basis": "simulated"},
+    "transfers_via_ai": {"total": 0, "baseline": 0, "live": 0, "basis": "simulated"}
+  }
+}
+```
+
+### POST /api/v1/demo/risk-transfer
+
+Customer. Creates one pending transfer to Prize Desk that scores high. Balances are not moved. Confirm it with `risk_ack` true, a yes word, and the PIN, or cancel it.
+
+Response `201` uses the same `transaction` shape as `POST /api/v1/transfers`, including `risk`.
+
+### POST /api/v1/channels/ussd
+
+Customer. Webhook-style body a USSD aggregator can send later. `msisdn`, when present, must be the signed-in customer's line.
+
+```json
+{"session_id": "", "text": "1", "service_code": "*151#", "msisdn": "0771000001"}
+```
+
+Response `data`: `session_id`, `message`, `continue_session`, `replies` (list of `{type, body}`), `service_code`, `channel`. Send the returned `session_id` on the next turn. Menu: 1 balance, 2 send money, 3 airtime, 4 ask Shamwari, 0 exit. Payments still need a yes word and the PIN. The PIN is not echoed.
+
+### POST /api/v1/channels/chat
+
+Customer. Same engine, chat wording. Not WhatsApp.
+
+```json
+{"session_id": "", "text": "tumira $5 kuna Tendai", "from": "0771000001"}
+```
+
+`data.replies` is what a WhatsApp Business handler could forward. The public name of this channel is "Chat channel (WhatsApp-style mock)".
+
+### GET /api/v1/pulse/{item_id}/copilot
+
+Care staff. Returns `case`, `suggestion` (`summary`, `context`, `drafts`, `next_action`, `provider`, `offline`), and `audit_id`. The first open logs action `suggested`. The draft is not sent to the customer.
+
+### POST /api/v1/pulse/{item_id}/copilot
+
+Care staff. Writes another `suggested` audit row and returns the same shape.
+
+### POST /api/v1/pulse/{item_id}/decision
+
+Care staff. Body: `action` is `approve`, `edit`, or `discard`. `edit` requires `text`. Approve and edit record the reply. Discard sends nothing. A person has to call this. The model does not.
+
+```json
+{"action": "approve", "text": "Please do not share your PIN."}
+```
+
+### GET /api/v1/audit
+
+Care staff. Newest first, up to 80 rows: `id`, `created_at`, `actor_name`, `actor_role`, `module`, `action`, `subject_type`, `subject_id`, `decision`, `detail`. No PIN and no prompt text.
+

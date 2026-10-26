@@ -50,6 +50,8 @@ Future<void> bootApp(WidgetTester tester, AppHarness harness) async {
 
 Future<void> signIn(WidgetTester tester, String deskKey) async {
   final scrollable = find.byType(Scrollable).first;
+  await tester.tap(find.byKey(const Key('demo-accounts')));
+  await tester.pump();
   await _reveal(tester, find.byKey(Key(deskKey)), scrollable);
   await tester.tap(find.byKey(Key(deskKey)));
   await tester.pump();

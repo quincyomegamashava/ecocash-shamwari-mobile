@@ -14,14 +14,14 @@ class ShamwariMark extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: palette.highContrast ? palette.orange : const Color(0xFFF97316),
-        borderRadius: BorderRadius.circular(size * 0.28),
+        color: palette.highContrast ? palette.orange : palette.forest,
+        borderRadius: BorderRadius.circular(size * 0.32),
         boxShadow: palette.highContrast || !shamwariAllowBlur
             ? null
             : [
                 BoxShadow(
-                  color: const Color(0xFFF97316).withValues(alpha: 0.45),
-                  blurRadius: size * 0.45,
+                  color: palette.forest.withValues(alpha: 0.28),
+                  blurRadius: size * 0.4,
                   offset: const Offset(0, 8),
                 ),
               ],

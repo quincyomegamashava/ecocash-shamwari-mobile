@@ -7,6 +7,11 @@ bool get captureTourActive => Platform.environment['SHAMWARI_CAPTURE'] == '1';
 
 class CaptureCue {
   static final phase = ValueNotifier<String?>(null);
+  static final ready = ValueNotifier<String?>(null);
+
+  /// Bumped when a capture screen starts loading, so a replaced route cannot
+  /// satisfy a wait that an older instance already signaled.
+  static int epoch = 0;
 }
 
 /// Scrolls a widget that matches [test] into the phone viewport.

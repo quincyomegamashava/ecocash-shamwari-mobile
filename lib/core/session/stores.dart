@@ -85,7 +85,8 @@ class MemoryPrefs implements PrefsStore {
       _strings[key] = value;
 }
 
-const defaultBaseUrl = 'http://10.0.2.2:8642';
+const defaultBaseUrl =
+    'https://shamwari.3xm7hvreng89r.eu-west-2.cs.amazonlightsail.com';
 
 String normalizeBaseUrl(String raw) {
   var value = raw.trim();

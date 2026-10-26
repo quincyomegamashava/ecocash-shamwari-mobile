@@ -186,12 +186,17 @@ class DioShamwariApi implements ShamwariApi {
     int id, {
     required String confirmWord,
     required String pin,
+    bool riskAck = false,
   }) async {
     return ConfirmResult.fromJson(
       await _send(
         _dio.post(
           '/api/v1/transfers/$id/confirm',
-          data: {'confirm_word': confirmWord, 'pin': pin},
+          data: {
+            'confirm_word': confirmWord,
+            'pin': pin,
+            if (riskAck) 'risk_ack': true,
+          },
         ),
       ),
     );
@@ -214,6 +219,15 @@ class DioShamwariApi implements ShamwariApi {
   Future<VoiceInterpretation> interpretText(String text) async {
     return VoiceInterpretation.fromJson(
       await _send(_dio.post('/api/v1/voice/interpret', data: {'text': text})),
+    );
+  }
+
+  @override
+  Future<VoiceInterpretation> interpretSample(String sampleId) async {
+    return VoiceInterpretation.fromJson(
+      await _send(
+        _dio.post('/api/v1/voice/interpret', data: {'sample_id': sampleId}),
+      ),
     );
   }
 
@@ -244,12 +258,18 @@ class DioShamwariApi implements ShamwariApi {
     required int txnId,
     required String confirmWord,
     required String pin,
+    bool riskAck = false,
   }) async {
     return ConfirmResult.fromJson(
       await _send(
         _dio.post(
           '/api/v1/voice/confirm',
-          data: {'txn_id': txnId, 'confirm_word': confirmWord, 'pin': pin},
+          data: {
+            'txn_id': txnId,
+            'confirm_word': confirmWord,
+            'pin': pin,
+            if (riskAck) 'risk_ack': true,
+          },
         ),
       ),
     );
@@ -454,6 +474,86 @@ class DioShamwariApi implements ShamwariApi {
     final data = await _send(_dio.get('/api/v1/ai-log'));
     return (data['calls'] as List? ?? const [])
         .map((item) => AiCall.fromJson((item as Map).cast<String, dynamic>()))
+        .toList();
+  }
+
+  @override
+  Future<TransferResult> prizeRiskTransfer() async {
+    return TransferResult.fromJson(
+      await _send(_dio.post('/api/v1/demo/risk-transfer')),
+    );
+  }
+
+  @override
+  Future<ImpactReport> impact() async {
+    return ImpactReport.fromJson(await _send(_dio.get('/api/v1/impact')));
+  }
+
+  @override
+  Future<ChannelTurn> ussd({String? sessionId, String text = ''}) async {
+    return ChannelTurn.fromJson(
+      await _send(
+        _dio.post(
+          '/api/v1/channels/ussd',
+          data: {
+            'session_id': ?sessionId,
+            'text': text,
+            'service_code': '*151#',
+          },
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<ChannelTurn> chat({String? sessionId, String text = ''}) async {
+    return ChannelTurn.fromJson(
+      await _send(
+        _dio.post(
+          '/api/v1/channels/chat',
+          data: {'session_id': ?sessionId, 'text': text},
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<CopilotCase> copilot(int itemId) async {
+    return CopilotCase.fromJson(
+      await _send(_dio.get('/api/v1/pulse/$itemId/copilot')),
+    );
+  }
+
+  @override
+  Future<CopilotCase> refreshCopilot(int itemId) async {
+    return CopilotCase.fromJson(
+      await _send(_dio.post('/api/v1/pulse/$itemId/copilot')),
+    );
+  }
+
+  @override
+  Future<DecisionResult> decidePulse(
+    int itemId, {
+    required String action,
+    String text = '',
+  }) async {
+    return DecisionResult.fromJson(
+      await _send(
+        _dio.post(
+          '/api/v1/pulse/$itemId/decision',
+          data: {'action': action, 'text': text},
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<List<AuditEntry>> audit() async {
+    final data = await _send(_dio.get('/api/v1/audit'));
+    return (data['entries'] as List? ?? const [])
+        .map(
+          (item) => AuditEntry.fromJson((item as Map).cast<String, dynamic>()),
+        )
         .toList();
   }
 }

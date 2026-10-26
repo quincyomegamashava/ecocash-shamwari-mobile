@@ -5,8 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../screens/accessibility_screen.dart';
 import '../screens/activity_screen.dart';
 import '../screens/ai_log_screen.dart';
+import '../screens/audit_screen.dart';
+import '../screens/care_places.dart';
+import '../screens/chat_screen.dart';
 import '../screens/coach_screen.dart';
+import '../screens/copilot_screen.dart';
 import '../screens/forbidden_screen.dart';
+import '../screens/insights_screen.dart';
 import '../screens/customer_home_screen.dart';
 import '../screens/ledger_screen.dart';
 import '../screens/login_screen.dart';
@@ -17,6 +22,7 @@ import '../screens/receipts_screen.dart';
 import '../screens/scam_screen.dart';
 import '../screens/search_screen.dart';
 import '../screens/send_money_screen.dart';
+import '../screens/ussd_screen.dart';
 import '../screens/voice_pay_screen.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/mark.dart';
@@ -32,9 +38,26 @@ const customerPaths = {
   '/receipts',
   '/activity',
   '/accessibility',
+  '/chat',
+  '/ussd',
+  '/insights',
 };
 
-const staffPaths = {'/pulse', '/onboarding', '/ledger', '/ai-log'};
+const staffPaths = {
+  '/pulse',
+  '/onboarding',
+  '/ledger',
+  '/ai-log',
+  '/audit',
+  '/queue',
+  '/impact',
+  '/copilot',
+};
+
+bool isCustomerPath(String loc) => customerPaths.contains(loc);
+
+bool isStaffPath(String loc) =>
+    staffPaths.contains(loc) || loc.startsWith('/pulse/');
 
 String routeForSlug(String slug) {
   switch (slug) {
@@ -61,6 +84,13 @@ String? routeForHit(String label, String? apiPath) {
   final path = apiPath ?? '';
   final lower = label.toLowerCase();
   if (lower.contains('walk rudo')) return '/demo';
+  if (path.contains('/channels/chat') || lower.contains('chat channel')) {
+    return '/chat';
+  }
+  if (path.contains('/channels/ussd') || lower.contains('ussd')) return '/ussd';
+  if (path.contains('/audit')) return '/audit';
+  if (path.contains('/impact')) return '/pulse';
+  if (path.contains('/copilot')) return '/pulse';
   if (path.contains('/voice')) return '/voice';
   if (path.contains('/coach')) return '/coach';
   if (path.contains('/scam')) return '/scam';
@@ -99,8 +129,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (loc == '/boot' || loc == '/login') {
         return auth.landing ?? (auth.isStaff ? '/pulse' : '/home');
       }
-      if (auth.isStaff && customerPaths.contains(loc)) return '/forbidden';
-      if (!auth.isStaff && staffPaths.contains(loc)) return '/forbidden';
+      if (auth.isStaff && isCustomerPath(loc)) return '/forbidden';
+      if (!auth.isStaff && isStaffPath(loc)) return '/forbidden';
       return null;
     },
     routes: [
@@ -148,6 +178,25 @@ final routerProvider = Provider<GoRouter>((ref) {
                 _page(state, const ActivityScreen()),
           ),
           GoRoute(
+            path: '/insights',
+            pageBuilder: (context, state) =>
+                _page(state, const InsightsScreen()),
+          ),
+          GoRoute(
+            path: '/queue',
+            pageBuilder: (context, state) => _page(state, const QueueScreen()),
+          ),
+          GoRoute(
+            path: '/copilot',
+            pageBuilder: (context, state) =>
+                _page(state, const CopilotHubScreen()),
+          ),
+          GoRoute(
+            path: '/impact',
+            pageBuilder: (context, state) =>
+                _page(state, const ImpactScreen()),
+          ),
+          GoRoute(
             path: '/accessibility',
             pageBuilder: (context, state) =>
                 _page(state, const AccessibilityScreen()),
@@ -155,6 +204,28 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/pulse',
             pageBuilder: (context, state) => _page(state, const PulseScreen()),
+          ),
+          GoRoute(
+            path: '/pulse/case/:id',
+            pageBuilder: (context, state) => _page(
+              state,
+              CopilotScreen(
+                itemId: int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/audit',
+            pageBuilder: (context, state) => _page(state, const AuditScreen()),
+          ),
+          GoRoute(
+            path: '/chat',
+            pageBuilder: (context, state) =>
+                _page(state, const ChatChannelScreen()),
+          ),
+          GoRoute(
+            path: '/ussd',
+            pageBuilder: (context, state) => _page(state, const UssdScreen()),
           ),
           GoRoute(
             path: '/onboarding',
@@ -194,10 +265,25 @@ CustomTransitionPage<void> _page(GoRouterState state, Widget child) {
     key: state.pageKey,
     child: child,
     opaque: true,
-    transitionDuration: Duration.zero,
-    reverseTransitionDuration: Duration.zero,
+    transitionDuration: const Duration(milliseconds: 220),
+    reverseTransitionDuration: const Duration(milliseconds: 180),
     transitionsBuilder: (context, animation, secondary, child) {
-      return _OpaquePage(child: child);
+      final reduce = MediaQuery.disableAnimationsOf(context);
+      final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+      return _OpaquePage(
+        child: reduce
+            ? child
+            : FadeTransition(
+                opacity: curved,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0.03, 0),
+                    end: Offset.zero,
+                  ).animate(curved),
+                  child: child,
+                ),
+              ),
+      );
     },
   );
 }

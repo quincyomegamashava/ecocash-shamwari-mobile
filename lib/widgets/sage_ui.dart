@@ -20,14 +20,15 @@ class GlassIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final onSky = palette.lightGlass && !palette.highContrast;
     final background = palette.highContrast
         ? Colors.black
-        : filled
-        ? Colors.white
-        : Colors.white.withValues(alpha: palette.lightGlass ? 0.28 : 0.12);
+        : onSky || filled
+        ? Colors.white.withValues(alpha: 0.86)
+        : Colors.white.withValues(alpha: 0.12);
     final foreground = palette.highContrast
         ? context.ink
-        : filled
+        : onSky || filled
         ? palette.forest
         : Colors.white;
     return Tooltip(
@@ -85,41 +86,55 @@ class ShamwariNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final reduce = MediaQuery.disableAnimationsOf(context);
     return Material(
       key: const Key('shamwari-nav'),
-      color: palette.highContrast ? Colors.black : palette.forest,
-      elevation: palette.highContrast ? 0 : 10,
-      shadowColor: const Color(0x66000000),
-      shape: StadiumBorder(
-        side: BorderSide(
-          color: palette.highContrast
-              ? palette.border
-              : Colors.white.withValues(alpha: 0.35),
-          width: palette.highContrast ? 2 : 1,
-        ),
-      ),
+      color: palette.highContrast ? Colors.black : const Color(0xFF0E2A56),
+      elevation: palette.highContrast ? 0 : 16,
+      shadowColor: const Color(0x660E2A56),
+      borderRadius: BorderRadius.circular(28),
       clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(6),
-        child: Row(
-          children: [
-            for (var i = 0; i < destinations.length; i++) ...[
-              if (i > 0) const SizedBox(width: 4),
-              i == selectedIndex
-                  ? Expanded(
-                      child: _NavItem(
-                        destination: destinations[i],
-                        selected: true,
-                        onTap: () => onSelected(i),
-                      ),
-                    )
-                  : _NavItem(
-                      destination: destinations[i],
-                      selected: false,
-                      onTap: () => onSelected(i),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth / destinations.length;
+            final index = selectedIndex.clamp(0, destinations.length - 1);
+            return Stack(
+              children: [
+                AnimatedPositioned(
+                  duration: reduce
+                      ? Duration.zero
+                      : const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                  left: width * index,
+                  width: width,
+                  top: 0,
+                  bottom: 0,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: palette.highContrast
+                          ? palette.orange
+                          : Colors.white.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-            ],
-          ],
+                  ),
+                ),
+                Row(
+                  children: [
+                    for (var i = 0; i < destinations.length; i++)
+                      Expanded(
+                        child: _NavItem(
+                          destination: destinations[i],
+                          selected: i == index,
+                          onTap: () => onSelected(i),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -143,9 +158,6 @@ class _NavItem extends StatelessWidget {
     final icon = selected ? destination.selected : destination.icon;
     final foreground = palette.highContrast
         ? (selected ? Colors.black : palette.orange)
-        : palette.forest;
-    final background = palette.highContrast
-        ? (selected ? palette.orange : Colors.black)
         : Colors.white;
     return Semantics(
       button: true,
@@ -153,47 +165,28 @@ class _NavItem extends StatelessWidget {
       label: destination.label,
       child: Material(
         key: Key('nav-${destination.path}'),
-        color: background,
-        shape: selected
-            ? const StadiumBorder()
-            : CircleBorder(
-                side: BorderSide(
-                  color: palette.highContrast
-                      ? palette.border
-                      : Colors.white.withValues(alpha: 0.8),
-                  width: palette.highContrast ? 2 : 1,
-                ),
-              ),
-        clipBehavior: Clip.antiAlias,
+        type: MaterialType.transparency,
         child: InkWell(
           onTap: onTap,
-          customBorder: selected ? const StadiumBorder() : const CircleBorder(),
-          child: SizedBox(
-            width: selected ? null : 40,
-            height: 40,
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: selected ? 8 : 0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, size: 20, color: foreground),
-                  if (selected) ...[
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        destination.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: foreground,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 20, color: foreground),
+                const SizedBox(height: 2),
+                Text(
+                  destination.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: foreground.withValues(alpha: selected ? 1 : 0.72),
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
             ),
           ),
         ),

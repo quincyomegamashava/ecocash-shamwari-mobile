@@ -1007,6 +1007,177 @@ paths:
                 $ref: "#/components/schemas/DemoResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /healthz:
+    get:
+      tags: [Demo]
+      summary: Container health check. Not under /api/v1.
+      security: []
+      responses:
+        "200":
+          description: Process is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  synthetic:
+                    type: boolean
+  /api/v1/impact:
+    get:
+      tags: [Care]
+      summary: Simulated impact totals plus live demo activity
+      responses:
+        "200":
+          description: time saved, tickets deflected, scams blocked, AI transfers
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/demo/risk-transfer:
+    post:
+      tags: [Demo]
+      summary: Create the high-risk Prize Desk pending transfer
+      responses:
+        "201":
+          description: Pending transfer with risk.level high
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/channels/ussd:
+    post:
+      tags: [Customer]
+      summary: USSD webhook turn (*151# shape)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: string
+                text:
+                  type: string
+                service_code:
+                  type: string
+                msisdn:
+                  type: string
+      responses:
+        "200":
+          description: message, continue_session, replies
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/channels/chat:
+    post:
+      tags: [Customer]
+      summary: Chat channel webhook turn (WhatsApp-style mock, no WhatsApp branding)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_id:
+                  type: string
+                text:
+                  type: string
+                from:
+                  type: string
+      responses:
+        "200":
+          description: message and replies
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/pulse/{item_id}/copilot:
+    get:
+      tags: [Care]
+      summary: One-line case summary, context, drafts, and next action
+      parameters:
+        - in: path
+          name: item_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: suggestion plus audit_id
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Care]
+      summary: Log another copilot suggestion
+      parameters:
+        - in: path
+          name: item_id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: suggestion plus audit_id
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/pulse/{item_id}/decision:
+    post:
+      tags: [Care]
+      summary: Approve, edit, or discard a copilot draft
+      parameters:
+        - in: path
+          name: item_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [approve, edit, discard]
+                text:
+                  type: string
+      responses:
+        "200":
+          description: Human decision recorded
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/audit:
+    get:
+      tags: [Care]
+      summary: Copilot and risk audit log
+      responses:
+        "200":
+          description: Newest entries first
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 components:
   securitySchemes:
     bearerAuth:

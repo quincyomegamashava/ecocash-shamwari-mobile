@@ -9,7 +9,9 @@ import '../core/session/session.dart';
 import '../dev/capture_cue.dart';
 import '../core/theme/shamwari_theme.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/motion.dart';
 import '../widgets/pin_pad.dart';
+import '../widgets/risk_card.dart';
 import '../widgets/states.dart';
 
 class SendMoneyScreen extends ConsumerStatefulWidget {
@@ -34,8 +36,11 @@ class _SendMoneyScreenState extends ConsumerState<SendMoneyScreen> {
   Txn? _pending;
   String _yes = 'hongu';
   String _pin = '';
+  bool _riskAck = false;
   String? _formError;
   ConfirmResult? _posted;
+  int _shakes = 0;
+  var _captureSuccessStarted = false;
 
   @override
   void initState() {
@@ -75,6 +80,29 @@ class _SendMoneyScreenState extends ConsumerState<SendMoneyScreen> {
       if (captureTourActive && CaptureCue.phase.value == 'pin') {
         await _prepare();
       }
+      if (captureTourActive && CaptureCue.phase.value == 'send-risk') {
+        await _prize();
+        if (!mounted || CaptureCue.phase.value != 'send-risk') return;
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
+        await captureReveal(
+          context,
+          (element) => element.widget.key == const Key('risk-warning'),
+        );
+        CaptureCue.ready.value = 'send-risk-ready';
+      }
+      if (captureTourActive &&
+          CaptureCue.phase.value == 'success' &&
+          !_captureSuccessStarted) {
+        _captureSuccessStarted = true;
+        await _prepare();
+        if (!mounted || _pending == null) return;
+        _pin = '2580';
+        _yes = 'yes';
+        await _confirm();
+        if (!mounted || _posted == null) return;
+        CaptureCue.ready.value = 'success-ready';
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -110,6 +138,7 @@ class _SendMoneyScreenState extends ConsumerState<SendMoneyScreen> {
       setState(() {
         _pending = result.transaction;
         _pin = '';
+        _riskAck = false;
       });
       if (captureTourActive && CaptureCue.phase.value == 'pin') {
         await WidgetsBinding.instance.endOfFrame;
@@ -135,7 +164,12 @@ class _SendMoneyScreenState extends ConsumerState<SendMoneyScreen> {
     try {
       final result = await ref
           .read(shamwariApiProvider)
-          .confirmTransfer(pending.id, confirmWord: _yes, pin: _pin);
+          .confirmTransfer(
+            pending.id,
+            confirmWord: _yes,
+            pin: _pin,
+            riskAck: _riskAck,
+          );
       if (!mounted) return;
       setState(() {
         _posted = result;
@@ -148,7 +182,29 @@ class _SendMoneyScreenState extends ConsumerState<SendMoneyScreen> {
       setState(() {
         _formError = friendlyError(error);
         _pin = '';
+        if (error.code == 'bad_pin') _shakes += 1;
       });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _prize() async {
+    setState(() {
+      _busy = true;
+      _formError = null;
+    });
+    try {
+      final result = await ref.read(shamwariApiProvider).prizeRiskTransfer();
+      if (!mounted) return;
+      setState(() {
+        _pending = result.transaction;
+        _pin = '';
+        _riskAck = false;
+        _posted = null;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _formError = friendlyError(error));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -305,6 +361,12 @@ class _SendMoneyScreenState extends ConsumerState<SendMoneyScreen> {
           onPressed: _busy ? null : _prepare,
           child: Text(_busy ? 'Holding…' : 'Prepare pending'),
         ),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          key: const Key('prize-desk'),
+          onPressed: _busy ? null : _prize,
+          child: const Text('Load the prize-desk scam warning'),
+        ),
       ],
     );
   }
@@ -333,6 +395,17 @@ class _SendMoneyScreenState extends ConsumerState<SendMoneyScreen> {
           'The PIN is sent only with this confirm. It is not written to the AI log.',
           style: TextStyle(color: context.inkMuted, fontSize: 13),
         ),
+        if (pending.risk.notable) ...[
+          const SizedBox(height: 12),
+          RiskWarning(
+            risk: pending.risk,
+            acknowledged: _riskAck,
+            busy: _busy,
+            onAcknowledge: () => setState(() => _riskAck = true),
+            onCancel: _cancel,
+          ),
+        ],
+        if (!pending.risk.requiresAck || _riskAck) ...[
         const SizedBox(height: 12),
         const SectionLabel('Yes word'),
         const SizedBox(height: 8),
@@ -348,7 +421,13 @@ class _SendMoneyScreenState extends ConsumerState<SendMoneyScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        PinPad(pin: _pin, onChanged: (value) => setState(() => _pin = value)),
+        Shake(
+          token: _shakes,
+          child: PinPad(
+            pin: _pin,
+            onChanged: (value) => setState(() => _pin = value),
+          ),
+        ),
         if (_formError != null) ...[
           const SizedBox(height: 8),
           Text(
@@ -369,6 +448,7 @@ class _SendMoneyScreenState extends ConsumerState<SendMoneyScreen> {
           onPressed: _busy ? null : _cancel,
           child: const Text('Cancel the hold'),
         ),
+        ],
       ],
     );
   }
@@ -379,6 +459,8 @@ class _SendMoneyScreenState extends ConsumerState<SendMoneyScreen> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
       children: [
         const SectionLabel('Posted'),
+        const SuccessMark(),
+        const SizedBox(height: 12),
         Text(
           'The book moved.',
           style: Theme.of(context).textTheme.headlineMedium,

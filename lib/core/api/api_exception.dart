@@ -53,7 +53,9 @@ String friendlyError(Object error) {
       case 'bad_pin':
         return 'That PIN does not match. Nothing was posted.';
       case 'transcript_empty':
-        return 'The microphone file had no words. Type a phrase, or tap one of the fixed lines.';
+        return 'That microphone file is not a known demo clip. Type a phrase, or tap a Shona or Ndebele sample.';
+      case 'risk_ack_required':
+        return 'This payment is high risk. Confirm the warning, then the yes word and the PIN. Nothing was posted.';
       case 'insufficient':
         return 'The wallet no longer covers that hold.';
       case 'forbidden':

@@ -143,8 +143,8 @@ Future<void> _gallery(
 
   tester
       .stateList<ScaffoldState>(find.byType(Scaffold))
-      .firstWhere((state) => state.hasDrawer)
-      .openDrawer();
+      .firstWhere((state) => state.hasEndDrawer)
+      .openEndDrawer();
   await pumpFrames(tester, 8);
   await tester.scrollUntilVisible(
     find.text('Sign out'),
@@ -154,6 +154,8 @@ Future<void> _gallery(
         .first,
   );
   await tester.tap(find.text('Sign out'));
+  await _until(tester, find.byKey(const Key('demo-accounts')));
+  await tester.tap(find.byKey(const Key('demo-accounts')));
   await _until(tester, find.text('Choose a demo desk.'));
 
   await signIn(tester, 'desk-care');

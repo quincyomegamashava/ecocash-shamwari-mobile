@@ -129,13 +129,67 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 8),
-        if (auth.isCustomer)
+        if (auth.isCustomer) ...[
+          SettingsPill(
+            icon: Icons.mic_rounded,
+            title: 'Voice notes',
+            subtitle: 'Shona, Ndebele and English',
+            onTap: () => context.go('/voice'),
+          ),
+          SettingsPill(
+            icon: Icons.chat_bubble_outline_rounded,
+            title: 'Chat channel',
+            onTap: () => context.go('/chat'),
+          ),
+          SettingsPill(
+            icon: Icons.dialpad_rounded,
+            title: 'USSD *151#',
+            onTap: () => context.go('/ussd'),
+          ),
+          SettingsPill(
+            icon: Icons.auto_awesome_rounded,
+            title: 'Financial coach',
+            onTap: () => context.go('/coach'),
+          ),
+          SettingsPill(
+            icon: Icons.shield_rounded,
+            title: 'Scam checker',
+            onTap: () => context.go('/scam'),
+          ),
+          SettingsPill(
+            icon: Icons.receipt_long_rounded,
+            title: 'Scan a slip',
+            onTap: () => context.go('/receipts'),
+          ),
           SettingsPill(
             icon: Icons.accessibility_new_rounded,
             title: 'Accessibility',
             subtitle: 'Type, contrast, spoken balances',
             onTap: () => context.go('/accessibility'),
           ),
+        ],
+        if (auth.isStaff) ...[
+          SettingsPill(
+            icon: Icons.fact_check_rounded,
+            title: 'Audit log',
+            onTap: () => context.go('/audit'),
+          ),
+          SettingsPill(
+            icon: Icons.school_rounded,
+            title: 'Onboarding buddy',
+            onTap: () => context.go('/onboarding'),
+          ),
+          SettingsPill(
+            icon: Icons.menu_book_rounded,
+            title: 'Ledger',
+            onTap: () => context.go('/ledger'),
+          ),
+          SettingsPill(
+            icon: Icons.memory_rounded,
+            title: 'AI log',
+            onTap: () => context.go('/ai-log'),
+          ),
+        ],
         SettingsPill(
           icon: auth.isStaff ? Icons.insights_rounded : Icons.history_rounded,
           title: auth.isStaff ? 'Customer pulse' : 'Activity',
@@ -154,8 +208,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         const SizedBox(height: 8),
         SettingsPill(
           icon: Icons.dark_mode_outlined,
-          title: 'Dark sage',
-          subtitle: 'A deeper version of this palette',
+          title: 'Dark mode',
+          subtitle: 'A deeper navy version of this palette',
           trailing: Switch(
             value: settings.themeMode == ThemeMode.dark,
             onChanged: (value) => ref

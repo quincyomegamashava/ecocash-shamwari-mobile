@@ -25,6 +25,8 @@ class MockBackend implements ShamwariApi {
   int _messageSeq = 2;
   int _aiSeq = 4;
   int _pulseSeq = 58;
+  int _auditSeq = 0;
+  int _chanSeq = 0;
 
   final List<Txn> _txns = [];
   final List<ReceiptEntry> _receipts = [];
@@ -34,6 +36,8 @@ class MockBackend implements ShamwariApi {
   final List<_ThemeCount> _themes = [];
   final List<_RegionCount> _regions = [];
   final List<PulseItem> _feed = [];
+  final List<AuditEntry> _audits = [];
+  final Map<String, _Chan> _channels = {};
   int _publishCursor = 0;
 
   late final Map<String, _Pot> _pots;
@@ -44,6 +48,15 @@ class MockBackend implements ShamwariApi {
       'The demo PIN is checked only on the confirm endpoint. Do not send it to coach, scam, voice interpret, or onboarding.';
 
   void attach(String? token) => _attached = token;
+
+  /// Drops decision rows recorded during a capture walk.
+  ///
+  /// Cancelling the Prize Desk hold logs scam_blocked, which moves the
+  /// impact totals off the published baseline. The care shots want that
+  /// baseline: simulated, with no live events yet.
+  void clearDecisions() {
+    _audits.clear();
+  }
 
   void adopt(String token, String username) {
     _sessions[token] = username;
@@ -622,6 +635,8 @@ class MockBackend implements ShamwariApi {
     String? merchantName,
     int? merchantId,
     required String note,
+    String channel = 'api',
+    String requestText = '',
   }) {
     final normalized = _kind(kind);
     final cur = currency.toUpperCase() == 'ZIG'
@@ -712,8 +727,29 @@ class MockBackend implements ShamwariApi {
       outgoing: true,
       createdAt: _iso(DateTime.now().toUtc()),
       postedAt: null,
+      risk: _score(
+        name: counterparty,
+        amountCents: amountCents,
+        currency: cur,
+        note: note,
+        requestText: requestText,
+        recipientId: resolvedRecipient,
+        kind: normalized,
+        channel: channel,
+      ),
     );
     _txns.insert(0, txn);
+    if (txn.risk.level == 'high') {
+      _logAudit(
+        module: 'risk',
+        action: 'risk_flagged',
+        subjectType: 'transaction',
+        subjectId: '${txn.id}',
+        detail: 'score ${txn.risk.score} on ${txn.reference}',
+        actorName: 'Rudo Moyo',
+        actorRole: 'customer',
+      );
+    }
     return TransferResult(outcome: 'pending', transaction: txn, message: note);
   }
 
@@ -736,9 +772,10 @@ class MockBackend implements ShamwariApi {
     int id, {
     required String confirmWord,
     required String pin,
+    bool riskAck = false,
   }) {
     _customer();
-    return Future.value(_confirm(id, confirmWord, pin));
+    return Future.value(_confirm(id, confirmWord, pin, riskAck: riskAck));
   }
 
   @override
@@ -763,10 +800,27 @@ class MockBackend implements ShamwariApi {
     _pots[txn.currency]!.pending -= txn.amountCents;
     final cancelled = _copy(txn, status: 'cancelled');
     _txns[index] = cancelled;
+    if (txn.risk.level == 'high') {
+      _logAudit(
+        module: 'risk',
+        action: 'scam_blocked',
+        subjectType: 'transaction',
+        subjectId: '${txn.id}',
+        decision: 'cancel',
+        detail: 'High-risk transfer ${txn.reference} was cancelled before it posted.',
+        actorName: 'Rudo Moyo',
+        actorRole: 'customer',
+      );
+    }
     return cancelled;
   }
 
-  ConfirmResult _confirm(int id, String confirmWord, String pinValue) {
+  ConfirmResult _confirm(
+    int id,
+    String confirmWord,
+    String pinValue, {
+    bool riskAck = false,
+  }) {
     final index = _txns.indexWhere((txn) => txn.id == id);
     if (index < 0) {
       throw ApiException(
@@ -799,6 +853,35 @@ class MockBackend implements ShamwariApi {
         details: {
           'transaction': {'id': txn.id, 'status': txn.status},
         },
+      );
+    }
+    if (txn.risk.requiresAck && !riskAck) {
+      throw ApiException(
+        code: 'risk_ack_required',
+        message:
+            'This payment is high risk. Send risk_ack true, then the yes word and the PIN. Nothing was posted.',
+        status: 400,
+        details: {
+          'outcome': 'risk_ack_required',
+          'pin_checked_locally': false,
+          'pin_sent_to_model': false,
+          'transaction': {'id': txn.id, 'status': 'pending'},
+        },
+      );
+    }
+    var current = txn;
+    if (txn.risk.requiresAck && riskAck) {
+      current = _copy(txn, risk: txn.risk.acknowledge());
+      _txns[index] = current;
+      _logAudit(
+        module: 'risk',
+        action: 'risk_acknowledged',
+        subjectType: 'transaction',
+        subjectId: '${txn.id}',
+        decision: 'acknowledge',
+        detail: 'Extra confirm on ${txn.reference}',
+        actorName: 'Rudo Moyo',
+        actorRole: 'customer',
       );
     }
     final word = confirmWord.trim().toLowerCase();
@@ -843,7 +926,7 @@ class MockBackend implements ShamwariApi {
     pot.pending -= txn.amountCents;
     if (txn.currency == 'USD') _addSpend(txn.amountCents);
     final posted = _copy(
-      txn,
+      current,
       status: 'posted',
       postedAt: _iso(DateTime.now().toUtc()),
     );
@@ -878,6 +961,20 @@ class MockBackend implements ShamwariApi {
   }
 
   @override
+  Future<VoiceInterpretation> interpretSample(String sampleId) async {
+    _customer();
+    final clip = _clipById(sampleId);
+    if (clip == null) {
+      throw ApiException(
+        code: 'validation',
+        message: 'That sample clip is not in the demo set.',
+        status: 400,
+      );
+    }
+    return _heard(clip.$1, clip.$2, 'Demo clip. Transcribed offline, without a model.');
+  }
+
+  @override
   Future<VoiceInterpretation> interpretText(String text) async {
     _customer();
     final trimmed = text.trim();
@@ -889,12 +986,52 @@ class MockBackend implements ShamwariApi {
       );
     }
     _logAi('voice', 'interpret', trimmed.length);
+    return _heard(trimmed, '', '');
+  }
+
+  VoiceInterpretation _heard(String transcript, String languageHint, String note) {
+    final plan = _plan(transcript);
     return VoiceInterpretation(
-      transcript: trimmed,
-      transcriptNote: '',
+      transcript: transcript,
+      transcriptNote: note,
       balances: [_walletModel('USD'), _walletModel('ZIG')],
-      plan: _plan(trimmed),
+      plan: languageHint.isEmpty
+          ? plan
+          : VoicePlan(
+              intent: plan.intent,
+              amountCents: plan.amountCents,
+              currency: plan.currency,
+              language: languageHint,
+              recipientId: plan.recipientId,
+              recipientName: plan.recipientName,
+              merchantId: plan.merchantId,
+              merchantName: plan.merchantName,
+              missing: plan.missing,
+              ambiguous: plan.ambiguous,
+              unknownName: plan.unknownName,
+              locked: true,
+              confidence: 0.99,
+              sentence: plan.sentence,
+              source: 'clip',
+              redacted: plan.redacted,
+              providerNote: plan.providerNote,
+              transcript: transcript,
+              availableCents: plan.availableCents,
+            ),
     );
+  }
+
+  (String, String)? _clipById(String sampleId) {
+    switch (sampleId.trim().toLowerCase()) {
+      case 'tumira-5-tendai':
+      case 'tumira-5-tendai-sn.wav':
+        return ('tumira \$5 kuna Tendai', 'sn');
+      case 'thumela-5-tendai':
+      case 'thumela-5-tendai-nd.wav':
+        return ('thumela \$5 ku Tendai', 'nd');
+      default:
+        return null;
+    }
   }
 
   @override
@@ -904,6 +1041,14 @@ class MockBackend implements ShamwariApi {
     String? language,
   }) async {
     _customer();
+    final named = _clipById(filename);
+    if (named != null && bytes.isNotEmpty) {
+      return _heard(
+        named.$1,
+        named.$2,
+        'Demo clip. Transcribed offline, without a model.',
+      );
+    }
     _logAi(
       'voice',
       'interpret',
@@ -913,7 +1058,8 @@ class MockBackend implements ShamwariApi {
     );
     throw ApiException(
       code: 'transcript_empty',
-      message: 'Offline mock cannot hear audio. Use a demo phrase, or a browser with speech recognition.',
+      message:
+          'No transcript. Send text, a sample_id, or a known demo clip. Other audio needs a speech key.',
       status: 400,
     );
   }
@@ -951,6 +1097,8 @@ class MockBackend implements ShamwariApi {
       merchantName: parsed.merchantName,
       merchantId: parsed.merchantId,
       note: 'Prepared as pending. Nothing has been posted. Confirm with a yes word and the PIN.',
+      channel: 'voice',
+      requestText: parsed.transcript,
     );
     return TransferResult(
       outcome: created.outcome,
@@ -964,9 +1112,10 @@ class MockBackend implements ShamwariApi {
     required int txnId,
     required String confirmWord,
     required String pin,
+    bool riskAck = false,
   }) async {
     _customer();
-    return _confirm(txnId, confirmWord, pin);
+    return _confirm(txnId, confirmWord, pin, riskAck: riskAck);
   }
 
   @override
@@ -1786,7 +1935,10 @@ class MockBackend implements ShamwariApi {
       language = 'nd';
     }
     final available = _pots['USD']!.balance - _pots['USD']!.pending;
-    final locked = _phrases.any((phrase) => phrase.text.toLowerCase() == lower);
+    final locked =
+        _phrases.any((phrase) => phrase.text.toLowerCase() == lower) ||
+        lower == 'tumira \$5 kuna tendai' ||
+        lower == 'thumela \$5 ku tendai';
     if (lower.contains('balance') ||
         lower.contains('ndiratidze') ||
         lower.contains('ngibonise') ||
@@ -1807,9 +1959,13 @@ class MockBackend implements ShamwariApi {
       );
     }
     if (lower.contains('airtime')) {
+      final digits = RegExp(r'(\d{1,6})(?:\.(\d{1,2}))?').firstMatch(lower);
+      final airtimeCents = digits == null
+          ? 500
+          : (parseCents(digits.group(0)!) ?? 500);
       return VoicePlan(
         intent: 'buy_airtime',
-        amountCents: 500,
+        amountCents: airtimeCents,
         currency: 'USD',
         language: language,
         recipientId: null,
@@ -1844,10 +2000,7 @@ class MockBackend implements ShamwariApi {
         missing.add('amount');
       }
     }
-    Contact? contact;
-    for (final candidate in _contacts) {
-      if (lower.contains(candidate.name.toLowerCase())) contact = candidate;
-    }
+    final contact = _contactInText(lower);
     if (contact == null &&
         (lower.contains('send') ||
             lower.contains('tumira') ||
@@ -1860,13 +2013,13 @@ class MockBackend implements ShamwariApi {
         !lower.contains('thumela')) {
       missing.add('intent');
     }
+    final shown = amount == null ? '…' : formatCents(amount, 'USD');
+    final who = contact?.name ?? '…';
     final sentence = switch (language) {
-      'sn' =>
-        'Ndichatumira madhora makumi maviri kuna ${contact?.name ?? '…'}. Hongu here?',
-      'nd' =>
-        'Ngizathumela amadola angamatshumi amabili ku ${contact?.name ?? '…'}. Kulungile?',
+      'sn' => 'Ndichatumira $shown kuna $who. Hongu here?',
+      'nd' => 'Ngizathumela $shown ku $who. Kulungile?',
       _ =>
-        'I will prepare ${amount == null ? 'a transfer' : formatCents(amount, 'USD')} to ${contact?.name ?? 'someone'}. Nothing posts until you confirm.',
+        'I will prepare ${amount == null ? 'a transfer' : shown} to ${contact?.name ?? 'someone'}. Nothing posts until you confirm.',
     };
     return VoicePlan(
       intent: 'send_money',
@@ -1931,11 +2084,45 @@ class MockBackend implements ShamwariApi {
     }
     if (name == null || name.trim().isEmpty) return null;
     final lower = name.trim().toLowerCase();
-    final matches = _contacts.where(
+    if (lower == 'prize desk') {
+      return const Contact(
+        id: 99,
+        name: 'Prize Desk',
+        city: 'Harare',
+        customerId: 99,
+      );
+    }
+    final exact = _contacts.where(
       (contact) => contact.name.toLowerCase() == lower,
     );
-    if (matches.isEmpty) return null;
-    return matches.first;
+    if (exact.isNotEmpty) return exact.first;
+    final fuzzy = _contacts.where((contact) {
+      final full = contact.name.toLowerCase();
+      if (full.contains(lower) || lower.contains(full)) return true;
+      return full.split(' ').any((word) => word.length >= 4 && word == lower);
+    });
+    if (fuzzy.length == 1) return fuzzy.first;
+    return null;
+  }
+
+  Contact? _contactInText(String lower) {
+    final hits = <Contact>[];
+    for (final candidate in _contacts) {
+      final full = candidate.name.toLowerCase();
+      if (lower.contains(full)) {
+        hits.add(candidate);
+        continue;
+      }
+      for (final word in full.split(' ')) {
+        if (word.length >= 4 &&
+            RegExp('\\b${RegExp.escape(word)}\\b').hasMatch(lower)) {
+          hits.add(candidate);
+          break;
+        }
+      }
+    }
+    if (hits.length == 1) return hits.first;
+    return null;
   }
 
   Merchant? _matchMerchant(String? name, int? id) {
@@ -1995,6 +2182,7 @@ class MockBackend implements ShamwariApi {
     bool clearOutgoing = false,
     String? name,
     String? initials,
+    TxnRisk? risk,
   }) {
     return Txn(
       id: txn.id,
@@ -2015,6 +2203,7 @@ class MockBackend implements ShamwariApi {
       postedAt: postedAt ?? txn.postedAt,
       name: name ?? txn.name,
       initials: initials ?? txn.initials,
+      risk: risk ?? txn.risk,
     );
   }
 
@@ -2252,6 +2441,655 @@ class MockBackend implements ShamwariApi {
       source: 'sample',
     );
   }
+
+  TxnRisk _score({
+    required String name,
+    required int amountCents,
+    required String currency,
+    required String note,
+    required String requestText,
+    required int? recipientId,
+    required String kind,
+    required String channel,
+  }) {
+    final reasons = <RiskReason>[];
+    var score = 0;
+    void add(String code, int weight, String text) {
+      score += weight;
+      reasons.add(RiskReason(code: code, text: text));
+    }
+
+    final flagged =
+        name.trim().toLowerCase() == 'prize desk' ||
+        name.replaceAll(' ', '') == '0771000099';
+    if (flagged) {
+      add('flagged', 45, '$name is on the demo flagged list.');
+    }
+    final sentBefore = kind == 'transfer' &&
+        recipientId != null &&
+        _txns.any(
+          (txn) =>
+              txn.status == 'posted' &&
+              txn.kind == 'transfer' &&
+              txn.recipientId == recipientId &&
+              txn.outgoing == true,
+        );
+    if (kind == 'transfer' && recipientId != null && !sentBefore) {
+      add('new_recipient', 25, 'You have not sent money to $name before.');
+    }
+    final history = _txns
+        .where(
+          (txn) =>
+              txn.status == 'posted' &&
+              txn.currency == currency &&
+              txn.outgoing == true &&
+              (txn.kind == 'transfer' ||
+                  txn.kind == 'airtime' ||
+                  txn.kind == 'merchant_pay'),
+        )
+        .map((txn) => txn.amountCents)
+        .toList()
+      ..sort();
+    final unusual = history.isEmpty
+        ? amountCents >= 5000
+        : amountCents > (history[history.length ~/ 2] * 3).clamp(5000, 1 << 30);
+    if (unusual) {
+      add(
+        'unusual_amount',
+        30,
+        'This amount is larger than the usual payments on this wallet.',
+      );
+    }
+    final hour = DateTime.now().toUtc().add(const Duration(hours: 2)).hour;
+    if (hour < 6 || hour >= 22) {
+      add('odd_hour', 10, 'This is a quiet hour in Harare.');
+    }
+    final cutoff = DateTime.now().toUtc().subtract(const Duration(minutes: 10));
+    final recent = _txns.where((txn) {
+      final at = DateTime.tryParse(txn.createdAt);
+      if (at == null) return false;
+      return !at.isBefore(cutoff) &&
+          (txn.status == 'pending' || txn.status == 'posted');
+    }).length;
+    if (recent >= 3) {
+      add('rapid', 20, 'Several payments were started in the last few minutes.');
+    }
+    final haystack = '${note.toLowerCase()} ${requestText.toLowerCase()}';
+    const patterns = [
+      'prize',
+      'you have won',
+      'you won',
+      'winner',
+      'congratulations',
+      'congrats',
+      'release fee',
+      'pay the fee',
+      'otp',
+      'one-time pin',
+      'one time pin',
+      'reversal',
+      'reverse the',
+      'urgent',
+      'immediately',
+      'click here',
+      'suspended',
+      'verify your',
+      'agent code',
+    ];
+    if (patterns.any(haystack.contains)) {
+      add('scammy', 40, 'The request reads like a prize, fee, or PIN scam.');
+    }
+    final level = score >= 70
+        ? 'high'
+        : score >= 35
+        ? 'medium'
+        : 'low';
+    return TxnRisk(
+      score: score,
+      level: level,
+      reasons: reasons,
+      requiresAck: level == 'high',
+      acknowledged: false,
+      channel: channel,
+    );
+  }
+
+  void _logAudit({
+    required String module,
+    required String action,
+    required String subjectType,
+    required String subjectId,
+    String decision = '',
+    String detail = '',
+    String actorName = 'Care desk',
+    String actorRole = 'staff',
+  }) {
+    _audits.insert(
+      0,
+      AuditEntry(
+        id: ++_auditSeq,
+        createdAt: _iso(DateTime.now().toUtc()),
+        actorName: actorName,
+        actorRole: actorRole,
+        module: module,
+        action: action,
+        subjectType: subjectType,
+        subjectId: subjectId,
+        decision: decision,
+        detail: detail,
+      ),
+    );
+  }
+
+  ImpactMetric _pack(int baseline, int live) {
+    return ImpactMetric(
+      total: baseline + live,
+      baseline: baseline,
+      live: live,
+      basis: live == 0 ? 'simulated' : 'simulated+live',
+    );
+  }
+
+  @override
+  Future<ImpactReport> impact() async {
+    _staff();
+    final published = _feed.length;
+    final reversals = _feed.where((item) => item.theme == 'reversal_scam').length;
+    final approvals = _audits
+        .where((row) => row.action == 'approve' || row.action == 'edit')
+        .length;
+    final blocked = _audits.where((row) => row.action == 'scam_blocked').length;
+    final ai = _txns
+        .where(
+          (txn) =>
+              txn.status == 'posted' &&
+              (txn.risk.channel == 'voice' ||
+                  txn.risk.channel == 'ussd' ||
+                  txn.risk.channel == 'chat'),
+        )
+        .length;
+    return ImpactReport(
+      simulated: true,
+      disclaimer:
+          'Demo figures. The baseline is simulated from the synthetic pulse book. Live counts are what this server has done since the last seed.',
+      timeSavedMinutes: _pack(
+        published * 3,
+        approvals * 6 + ai * 8 + blocked * 5,
+      ),
+      ticketsDeflected: _pack(published, approvals),
+      scamsBlocked: _pack(reversals, blocked),
+      transfersViaAi: _pack(0, ai),
+    );
+  }
+
+  @override
+  Future<TransferResult> prizeRiskTransfer() async {
+    _customer();
+    const note =
+        'Congratulations, you won a prize. Pay the release fee now so we can send the money.';
+    final created = _create(
+      amountCents: 8000,
+      currency: 'USD',
+      kind: 'transfer',
+      recipientName: 'Prize Desk',
+      note: note,
+      channel: 'api',
+      requestText: note,
+    );
+    return TransferResult(
+      outcome: 'pending',
+      transaction: created.transaction,
+      warning:
+          'High-risk demo scenario. Simulated. Nothing is posted until risk_ack, a yes word, and the PIN.',
+    );
+  }
+
+  @override
+  Future<ChannelTurn> ussd({String? sessionId, String text = ''}) {
+    return Future.value(_channel('ussd', sessionId, text));
+  }
+
+  @override
+  Future<ChannelTurn> chat({String? sessionId, String text = ''}) {
+    return Future.value(_channel('chat', sessionId, text));
+  }
+
+  ChannelTurn _channel(String channel, String? sessionId, String text) {
+    _customer();
+    final kind = channel == 'chat' ? 'chat' : 'ussd';
+    var row = _channels[kind];
+    if (sessionId == null ||
+        sessionId.isEmpty ||
+        row == null ||
+        row.id != sessionId) {
+      row = _Chan('sess-${++_chanSeq}', kind);
+      _channels[kind] = row;
+    }
+    final stepped = _channelStep(row, text.trim(), kind);
+    return ChannelTurn(
+      sessionId: row.id,
+      channel: kind,
+      serviceCode: kind == 'ussd' ? '*151#' : null,
+      message: stepped.$1,
+      continueSession: stepped.$2,
+      replies: [ChannelReply(type: 'text', body: stepped.$1)],
+    );
+  }
+
+  (String, bool) _channelStep(_Chan row, String raw, String channel) {
+    final lowered = raw.toLowerCase();
+    if (const {'0', 'exit', 'cancel', 'menu'}.contains(lowered) &&
+        row.state != 'menu') {
+      final ended = lowered == 'menu';
+      row.state = 'menu';
+      row.pendingId = null;
+      row.amountCents = null;
+      return ended
+          ? (_channelMenu(channel), true)
+          : ('Session ended. Dial *151# to start again.', false);
+    }
+    switch (row.state) {
+      case 'send_amount':
+        return _channelAmount(row, raw, channel, airtime: false);
+      case 'send_who':
+        return _channelWho(row, raw, channel);
+      case 'airtime_amount':
+        return _channelAmount(row, raw, channel, airtime: true);
+      case 'send_risk':
+        return _channelRisk(row, raw, channel);
+      case 'send_yes':
+      case 'airtime_yes':
+        return _channelYes(row, raw);
+      case 'send_pin':
+      case 'airtime_pin':
+        return _channelPin(row, raw, channel);
+      case 'ask':
+        return _channelAsk(row, raw);
+      default:
+        return _channelMenuChoice(row, raw, channel);
+    }
+  }
+
+  String _channelMenu(String channel) {
+    if (channel == 'ussd') {
+      return 'Shamwari *151#\n1. Balance\n2. Send money\n3. Airtime\n4. Ask Shamwari\n0. Exit';
+    }
+    return 'Shamwari chat. I can check a balance, send money, buy airtime, or answer a question. '
+        'Try “balance”, “tumira \$5 kuna Tendai”, or “airtime 2”. '
+        'Money still waits for a yes word and the PIN.';
+  }
+
+  (String, bool) _channelMenuChoice(_Chan row, String raw, String channel) {
+    if (raw.isEmpty ||
+        const {'start', '*151#', 'hi', 'hello', 'mhoro'}.contains(raw.toLowerCase())) {
+      return (_channelMenu(channel), true);
+    }
+    final choice = raw.trim();
+    if (choice == '1' || const {'balance', 'mari', 'imali'}.contains(choice.toLowerCase())) {
+      return _channelBalance();
+    }
+    if (choice == '2') {
+      row.state = 'send_amount';
+      return ('Send money. Enter the amount in dollars, for example 5.', true);
+    }
+    if (choice == '3') {
+      row.state = 'airtime_amount';
+      return ('Airtime. Enter the amount in dollars, for example 2.', true);
+    }
+    if (choice == '4') {
+      row.state = 'ask';
+      return ('Ask Shamwari. What do you want to know about this wallet?', true);
+    }
+    if (choice == '0') {
+      row.state = 'menu';
+      return ('Session ended.', false);
+    }
+    final heard = _plan(raw);
+    if (heard.intent == 'check_balance') return _channelBalance();
+    if (heard.intent == 'buy_airtime' && heard.amountCents != null) {
+      return _channelStartAirtime(row, heard.amountCents!, channel);
+    }
+    if (heard.intent == 'send_money' &&
+        heard.amountCents != null &&
+        heard.recipientName.isNotEmpty) {
+      return _channelStartSend(row, heard.amountCents!, heard.recipientName, channel);
+    }
+    if (heard.intent == 'send_money') {
+      row.amountCents = heard.amountCents;
+      row.state = heard.amountCents == null ? 'send_amount' : 'send_who';
+      return (
+        heard.amountCents == null
+            ? 'Send money. Enter the amount in dollars, for example 5.'
+            : 'Who should receive it? Reply with a saved name, such as Tendai.',
+        true,
+      );
+    }
+    if (raw.toLowerCase().startsWith('ask ') || raw.endsWith('?')) {
+      final question = raw.toLowerCase().startsWith('ask ') ? raw.substring(4) : raw;
+      return _channelAsk(row, question);
+    }
+    return ('${_channelMenu(channel)}\nReply with 1, 2, 3 or 4.', true);
+  }
+
+  (String, bool) _channelBalance() {
+    final usd = _pots['USD']!;
+    final zig = _pots['ZIG']!;
+    String money(int cents) => (cents / 100).toStringAsFixed(2);
+    return (
+      'Balance (synthetic):\n'
+          'US\$ ${money(usd.balance - usd.pending)} available\n'
+          'ZiG ${money(zig.balance - zig.pending)} available\n'
+          '0. Menu',
+      true,
+    );
+  }
+
+  (String, bool) _channelAmount(
+    _Chan row,
+    String raw,
+    String channel, {
+    required bool airtime,
+  }) {
+    final heard = _plan('send $raw');
+    final cents = heard.amountCents;
+    if (cents == null || cents <= 0) {
+      return ('Enter a dollar amount such as 5.', true);
+    }
+    if (airtime) return _channelStartAirtime(row, cents, channel);
+    row.amountCents = cents;
+    row.state = 'send_who';
+    return ('Who should receive it? Reply with a saved name, such as Tendai.', true);
+  }
+
+  (String, bool) _channelWho(_Chan row, String raw, String channel) {
+    return _channelStartSend(row, row.amountCents ?? 0, raw, channel);
+  }
+
+  (String, bool) _channelStartSend(
+    _Chan row,
+    int cents,
+    String query,
+    String channel,
+  ) {
+    try {
+      final created = _create(
+        amountCents: cents,
+        currency: 'USD',
+        kind: 'transfer',
+        recipientName: query,
+        note: 'Prepared from the channel demo. Synthetic.',
+        channel: channel,
+        requestText: query,
+      );
+      return _channelAfter(row, created.transaction, channel);
+    } on ApiException catch (error) {
+      row.state = 'menu';
+      return (error.message, true);
+    }
+  }
+
+  (String, bool) _channelStartAirtime(_Chan row, int cents, String channel) {
+    try {
+      final created = _create(
+        amountCents: cents,
+        currency: 'USD',
+        kind: 'airtime',
+        note: 'Prepared from the channel demo. Synthetic.',
+        channel: channel,
+        requestText: 'airtime',
+      );
+      return _channelAfter(row, created.transaction, channel, airtime: true);
+    } on ApiException catch (error) {
+      row.state = 'menu';
+      return (error.message, true);
+    }
+  }
+
+  (String, bool) _channelAfter(
+    _Chan row,
+    Txn txn,
+    String channel, {
+    bool airtime = false,
+  }) {
+    row.pendingId = txn.id;
+    final available = _pots['USD']!.balance - _pots['USD']!.pending;
+    var prefix = 'Pending ${txn.reference}. Nothing is posted yet.';
+    if (txn.risk.level == 'medium' || txn.risk.level == 'high') {
+      prefix = '$prefix\nWarning: ${txn.risk.reasons.map((item) => item.text).join(' ')}';
+    }
+    if (txn.risk.requiresAck) {
+      row.state = 'send_risk';
+      return (
+        '$prefix\nHigh risk. Reply CONFIRM to continue, or 0 to cancel.',
+        true,
+      );
+    }
+    row.state = airtime ? 'airtime_yes' : 'send_yes';
+    return (
+      '$prefix\nAvailable after this hold: US\$ ${(available / 100).toStringAsFixed(2)}. '
+          'Reply yes, hongu, or yebo. The PIN comes next and stays on this server.',
+      true,
+    );
+  }
+
+  (String, bool) _channelRisk(_Chan row, String raw, String channel) {
+    final txn = row.pendingId == null ? null : _findTxn(row.pendingId!);
+    if (txn == null) {
+      row.state = 'menu';
+      return (_channelMenu(channel), true);
+    }
+    final truthy = const {
+      '1',
+      'true',
+      'yes',
+      'y',
+      'on',
+      'confirm',
+      'hongu',
+      'yebo',
+      'ewe',
+      'ehe',
+    }.contains(raw.trim().toLowerCase());
+    if (!truthy) {
+      return ('Reply CONFIRM if you still want to continue, or 0 to cancel.', true);
+    }
+    final index = _txns.indexWhere((item) => item.id == txn.id);
+    if (index >= 0) {
+      _txns[index] = _copy(txn, risk: txn.risk.acknowledge());
+    }
+    row.state = 'send_yes';
+    return ('Extra confirm saved. Reply yes, hongu, or yebo. Then the PIN.', true);
+  }
+
+  (String, bool) _channelYes(_Chan row, String raw) {
+    if (!yesWords.contains(raw.trim().toLowerCase())) {
+      return ('Reply yes, hongu, yebo, ewe, or ehe. Or 0 to cancel.', true);
+    }
+    row.state = row.state == 'airtime_yes' ? 'airtime_pin' : 'send_pin';
+    return (
+      'Enter the demo PIN. It is checked here and is not sent to Shamwari\'s model.',
+      true,
+    );
+  }
+
+  (String, bool) _channelPin(_Chan row, String raw, String channel) {
+    final txn = row.pendingId == null ? null : _findTxn(row.pendingId!);
+    if (txn == null) {
+      row.state = 'menu';
+      return (_channelMenu(channel), true);
+    }
+    try {
+      final posted = _confirm(txn.id, 'yes', raw.trim(), riskAck: !txn.risk.requiresAck);
+      final reference = posted.transaction.reference;
+      row.state = 'menu';
+      row.pendingId = null;
+      return ('Posted $reference. Synthetic money only. Reply menu to start again.', true);
+    } on ApiException catch (error) {
+      if (error.code == 'bad_pin') {
+        return (
+          'That PIN does not match. Nothing was posted. Try again, or reply 0 to cancel.',
+          true,
+        );
+      }
+      if (error.code == 'risk_ack_required') {
+        row.state = 'send_risk';
+        return ('This payment is high risk. Reply CONFIRM before the PIN.', true);
+      }
+      if (error.code == 'insufficient') {
+        row.state = 'menu';
+        return ('The wallet no longer covers this. Nothing was posted.', true);
+      }
+      return ('Nothing was posted. Reply menu to start again.', true);
+    }
+  }
+
+  (String, bool) _channelAsk(_Chan row, String raw) {
+    final question = scrubSecrets(raw).trim();
+    if (question.isEmpty) {
+      return ('Ask a question about the wallet. The PIN is not needed.', true);
+    }
+    row.state = 'menu';
+    return (
+      'The book can answer from the wallet you already have. $question stays on this phone.\n\nReply menu for *151#.',
+      true,
+    );
+  }
+
+  PulseItem? _pulseById(int id) {
+    for (final item in _feed) {
+      if (item.id == id) return item;
+    }
+    return null;
+  }
+
+  CopilotSuggestion _suggestion(PulseItem item) {
+    final similar = _feed
+        .where((other) => other.theme == item.theme && other.id != item.id)
+        .length;
+    final theme = item.themeLabel;
+    final context =
+        'Synthetic ${item.source} note from ${item.region}. $similar other published notes share the $theme theme.';
+    final next = item.theme == 'reversal_scam'
+        ? 'Tell the customer a reversal never needs their PIN, then keep the note on the reversal watch.'
+        : item.sentiment == 'negative'
+        ? 'Send the shorter draft and check whether the same theme is rising in this region.'
+        : 'Thank them and leave the note in the feed. No payment change is required.';
+    return CopilotSuggestion(
+      itemId: item.id,
+      summary: '${item.region}: $theme, ${item.sentiment}.',
+      contextText: context,
+      drafts: [
+        'Sorry this happened. We can see a $theme note from ${item.region}. Please do not share your PIN. A person on the care desk will stay with this case.',
+        'Thanks for telling us. This matches other ${item.region} notes about $theme. We will not ask you for a PIN or an OTP.',
+      ],
+      nextAction: next,
+      provider: 'mock',
+      offline: true,
+    );
+  }
+
+  CopilotCase _openCopilot(int itemId, {bool refresh = false}) {
+    _staff();
+    final item = _pulseById(itemId);
+    if (item == null) {
+      throw ApiException(
+        code: 'not_found',
+        message: 'No case with that id.',
+        status: 404,
+      );
+    }
+    final suggestion = _suggestion(item);
+    final existing = _audits.where(
+      (row) =>
+          row.module == 'copilot' &&
+          row.action == 'suggested' &&
+          row.subjectId == '$itemId',
+    );
+    if (refresh || existing.isEmpty) {
+      _logAudit(
+        module: 'copilot',
+        action: 'suggested',
+        subjectType: 'pulse_item',
+        subjectId: '$itemId',
+        detail: suggestion.summary,
+        actorName: 'Care desk',
+        actorRole: 'staff',
+      );
+    }
+    final row = _audits.firstWhere(
+      (entry) =>
+          entry.module == 'copilot' &&
+          entry.action == 'suggested' &&
+          entry.subjectId == '$itemId',
+    );
+    return CopilotCase(item: item, suggestion: suggestion, auditId: row.id);
+  }
+
+  @override
+  Future<CopilotCase> copilot(int itemId) async => _openCopilot(itemId);
+
+  @override
+  Future<CopilotCase> refreshCopilot(int itemId) async {
+    return _openCopilot(itemId, refresh: true);
+  }
+
+  @override
+  Future<DecisionResult> decidePulse(
+    int itemId, {
+    required String action,
+    String text = '',
+  }) async {
+    _staff();
+    final cleaned = action.trim().toLowerCase();
+    if (cleaned != 'approve' && cleaned != 'edit' && cleaned != 'discard') {
+      throw ApiException(
+        code: 'validation',
+        message: 'Choose approve, edit, or discard.',
+        status: 400,
+      );
+    }
+    final opened = _openCopilot(itemId);
+    final reply = text.trim().replaceAll(RegExp(r'\s+'), ' ');
+    late final String detail;
+    if (cleaned == 'approve') {
+      final sent = reply.isEmpty ? opened.suggestion.drafts.first : reply;
+      detail = 'Approved and recorded: $sent';
+    } else if (cleaned == 'edit') {
+      if (reply.isEmpty) {
+        throw ApiException(
+          code: 'validation',
+          message: 'Edit needs the reply you want to send.',
+          status: 400,
+        );
+      }
+      detail = 'Edited and recorded: $reply';
+    } else {
+      detail = 'Discarded. Nothing was sent.';
+    }
+    _logAudit(
+      module: 'copilot',
+      action: cleaned,
+      subjectType: 'pulse_item',
+      subjectId: '$itemId',
+      decision: cleaned,
+      detail: detail,
+      actorName: 'Care desk',
+      actorRole: 'staff',
+    );
+    return DecisionResult(
+      action: cleaned,
+      detail: detail,
+      sent: cleaned != 'discard',
+      auditId: _audits.first.id,
+      suggestion: opened.suggestion,
+    );
+  }
+
+  @override
+  Future<List<AuditEntry>> audit() async {
+    _staff();
+    return List<AuditEntry>.from(_audits.take(80));
+  }
 }
 
 String scrubSecrets(String text) {
@@ -2348,6 +3186,15 @@ class _DemoProgress {
   final bool started;
   final int? index;
   final bool done;
+}
+
+class _Chan {
+  _Chan(this.id, this.channel);
+  final String id;
+  final String channel;
+  String state = 'menu';
+  int? pendingId;
+  int? amountCents;
 }
 
 PulseItem _feedItem(
@@ -2565,6 +3412,18 @@ const _customerSearch = [
     hint: 'Guided script',
     apiPath: '/api/v1/demo',
   ),
+  SearchHit(
+    label: 'Chat channel',
+    group: 'Channels',
+    hint: 'Text menu for the same book',
+    apiPath: '/api/v1/channels/chat',
+  ),
+  SearchHit(
+    label: 'USSD *151#',
+    group: 'Channels',
+    hint: 'Phone-style session',
+    apiPath: '/api/v1/channels/ussd',
+  ),
 ];
 
 const _staffSearch = [
@@ -2591,6 +3450,12 @@ const _staffSearch = [
     group: 'Insights',
     hint: 'Model call metadata',
     apiPath: '/api/v1/ai-log',
+  ),
+  SearchHit(
+    label: 'Audit log',
+    group: 'Team',
+    hint: 'Approvals, edits, and discards',
+    apiPath: '/api/v1/audit',
   ),
   SearchHit(
     label: 'Open pulse',

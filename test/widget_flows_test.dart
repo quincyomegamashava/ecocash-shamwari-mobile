@@ -11,8 +11,8 @@ void main() {
     tester,
   ) async {
     await bootApp(tester, AppHarness());
-    expect(find.text('The wallet that\nwaits for yes.'), findsOneWidget);
-    expect(find.text('Prototype · synthetic data'), findsOneWidget);
+    expect(find.text('The wallet that waits for yes.'), findsOneWidget);
+    expect(find.text('Prototype · synthetic data'), findsNothing);
 
     final scrollable = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(
@@ -27,6 +27,8 @@ void main() {
     await pumpFrames(tester, 8);
     expect(find.textContaining('do not match'), findsOneWidget);
 
+    await tester.tap(find.byKey(const Key('demo-accounts')));
+    await tester.pump();
     await tester.tap(find.byKey(const Key('desk-rudo')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('sign-in')));
@@ -65,13 +67,16 @@ void main() {
     expect(find.text('Still pending.'), findsOneWidget);
     expect(find.byKey(const Key('pin-pad')), findsOneWidget);
     expect(find.text('2580'), findsNothing);
+    // The pad sits just under the floating nav. Dragging reveals it; ensureVisible
+    // treats the cached sliver as already shown and does not move.
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -360));
+    await tester.pump();
 
     Future<void> press(String digit) async {
       final key = find.descendant(
         of: find.byKey(const Key('pin-pad')),
         matching: find.text(digit),
       );
-      await tester.ensureVisible(key);
       await tester.tap(key);
       await tester.pump();
     }
@@ -137,5 +142,90 @@ void main() {
     expect(find.text('A coach inside the book.'), findsNothing);
     expect(find.textContaining('Mhoro'), findsNothing);
     expect(find.text('US\$ 86.00'), findsNothing);
+  });
+
+  testWidgets('prize desk warning blocks the PIN until it is acknowledged', (
+    tester,
+  ) async {
+    await bootApp(tester, AppHarness());
+    await signIn(tester, 'desk-rudo');
+    GoRouter.of(tester.element(find.byKey(const Key('shamwari-nav')))).go('/send');
+    await pumpFrames(tester, 12);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('prize-desk')),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(find.byKey(const Key('prize-desk')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('prize-desk')));
+    await pumpFrames(tester, 8);
+    expect(find.textContaining('Prize Desk'), findsWidgets);
+    expect(find.byKey(const Key('pin-pad')), findsNothing);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('risk-ack')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('risk-ack')));
+    await tester.pump();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('pin-pad')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.byKey(const Key('pin-pad')), findsOneWidget);
+  });
+
+  testWidgets('chat and ussd open as plain text channels', (tester) async {
+    await bootApp(tester, AppHarness());
+    await signIn(tester, 'desk-rudo');
+    final router = GoRouter.of(
+      tester.element(find.byKey(const Key('shamwari-nav'))),
+    );
+    router.go('/chat');
+    await pumpFrames(tester, 8);
+    expect(find.text('Chat channel'), findsOneWidget);
+    expect(find.textContaining('Shamwari chat'), findsOneWidget);
+    expect(find.textContaining('WhatsApp'), findsNothing);
+
+    router.go('/ussd');
+    await pumpFrames(tester, 8);
+    expect(find.text('USSD *151#'), findsOneWidget);
+    expect(find.textContaining('*151#'), findsWidgets);
+    expect(find.text('Chat channel'), findsNothing);
+  });
+
+  testWidgets('care home shows impact and a copilot case', (tester) async {
+    await bootApp(tester, AppHarness());
+    await signIn(tester, 'desk-care');
+    expect(find.byKey(const Key('impact-card')), findsOneWidget);
+    expect(find.text('minutes saved'), findsOneWidget);
+    expect(find.text('SIMULATED'), findsWidgets);
+
+    GoRouter.of(tester.element(find.byKey(const Key('shamwari-nav')))).go(
+      '/pulse/case/58',
+    );
+    await pumpFrames(tester, 10);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('copilot-approve')),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Approve & send'), findsOneWidget);
+    expect(find.textContaining('reversal'), findsWidgets);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('copilot-discard')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('copilot-discard')));
+    await pumpFrames(tester, 4);
+    expect(find.textContaining('Discarded'), findsOneWidget);
+
+    GoRouter.of(tester.element(find.byKey(const Key('shamwari-nav')))).go('/audit');
+    await pumpFrames(tester, 8);
+    expect(find.text('Audit log'), findsOneWidget);
+    expect(find.textContaining('discard'), findsWidgets);
   });
 }

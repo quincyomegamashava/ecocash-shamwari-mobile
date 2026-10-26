@@ -9,8 +9,11 @@ import '../core/api/api_exception.dart';
 import '../core/models/models.dart';
 import '../core/session/session.dart';
 import '../core/theme/shamwari_theme.dart';
+import '../dev/capture_cue.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/motion.dart';
 import '../widgets/pin_pad.dart';
+import '../widgets/risk_card.dart';
 import '../widgets/states.dart';
 
 class VoicePayScreen extends ConsumerStatefulWidget {
@@ -34,6 +37,8 @@ class _VoicePayScreenState extends ConsumerState<VoicePayScreen> {
   String _language = 'sn';
   String _yes = 'hongu';
   String _pin = '';
+  int _shakes = 0;
+  bool _riskAck = false;
   String? _formError;
   ConfirmResult? _posted;
 
@@ -50,7 +55,18 @@ class _VoicePayScreenState extends ConsumerState<VoicePayScreen> {
     super.dispose();
   }
 
+  void _capTrace(String message) {
+    try {
+      File('/tmp/shamwari-tour/trace').writeAsStringSync(
+        '$message\n',
+        mode: FileMode.append,
+      );
+    } catch (_) {}
+  }
+
   Future<void> _load() async {
+    final epoch = captureTourActive ? ++CaptureCue.epoch : 0;
+    if (captureTourActive) CaptureCue.ready.value = null;
     setState(() {
       _loading = true;
       _error = null;
@@ -59,17 +75,59 @@ class _VoicePayScreenState extends ConsumerState<VoicePayScreen> {
       final pace = ref.read(loadPaceProvider);
       final catalog = await ref.read(shamwariApiProvider).voicePhrases();
       await Future<void>.delayed(pace);
-      if (!mounted) return;
+      if (!mounted || (captureTourActive && epoch != CaptureCue.epoch)) return;
       setState(() {
         _catalog = catalog;
         _loading = false;
       });
+      if (captureTourActive && CaptureCue.phase.value == 'risk') {
+        await _prize();
+        if (!mounted || epoch != CaptureCue.epoch) return;
+        _capTrace(
+          'risk pending=${_pending?.id} who=${_pending?.counterparty} err=$_formError',
+        );
+        if (_pending == null) return;
+        await WidgetsBinding.instance.endOfFrame;
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        if (!mounted || epoch != CaptureCue.epoch) return;
+        await captureReveal(
+          context,
+          (element) => element.widget.key == const Key('risk-ack'),
+        );
+        await WidgetsBinding.instance.endOfFrame;
+        if (epoch != CaptureCue.epoch) return;
+        // Leave the phase on risk so a recreated route still opens the warning.
+        CaptureCue.ready.value = 'risk-ready';
+      } else if (captureTourActive && CaptureCue.phase.value == 'voice') {
+        await WidgetsBinding.instance.endOfFrame;
+        if (epoch != CaptureCue.epoch) return;
+        CaptureCue.ready.value = 'voice-ready';
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _error = error;
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _sample(String sampleId) async {
+    setState(() {
+      _busy = true;
+      _formError = null;
+      _heard = null;
+      _micNote = null;
+    });
+    try {
+      final heard = await ref.read(shamwariApiProvider).interpretSample(sampleId);
+      if (!mounted) return;
+      _text.text = heard.transcript;
+      setState(() => _heard = heard);
+    } catch (error) {
+      if (mounted) setState(() => _formError = friendlyError(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -98,12 +156,18 @@ class _VoicePayScreenState extends ConsumerState<VoicePayScreen> {
         setState(() => _recording = false);
         if (path == null) return;
         final bytes = await File(path).readAsBytes();
+        setState(() => _busy = true);
         try {
-          await ref
+          final heard = await ref
               .read(shamwariApiProvider)
               .interpretAudio(bytes, 'speech.m4a', language: _language);
+          if (!mounted) return;
+          _text.text = heard.transcript;
+          setState(() => _heard = heard);
         } catch (error) {
           if (mounted) setState(() => _micNote = friendlyError(error));
+        } finally {
+          if (mounted) setState(() => _busy = false);
         }
         return;
       }
@@ -145,7 +209,51 @@ class _VoicePayScreenState extends ConsumerState<VoicePayScreen> {
           .read(shamwariApiProvider)
           .prepareVoice(plan.toJson());
       if (!mounted) return;
-      setState(() => _pending = result.transaction);
+      setState(() {
+        _pending = result.transaction;
+        _riskAck = false;
+        _pin = '';
+      });
+    } catch (error) {
+      if (mounted) setState(() => _formError = friendlyError(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _prize() async {
+    setState(() {
+      _busy = true;
+      _formError = null;
+    });
+    try {
+      final result = await ref.read(shamwariApiProvider).prizeRiskTransfer();
+      if (!mounted) return;
+      setState(() {
+        _pending = result.transaction;
+        _riskAck = false;
+        _pin = '';
+        _posted = null;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _formError = friendlyError(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _cancelPending() async {
+    final pending = _pending;
+    if (pending == null) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(shamwariApiProvider).cancelTransfer(pending.id);
+      if (!mounted) return;
+      setState(() {
+        _pending = null;
+        _riskAck = false;
+        _pin = '';
+      });
     } catch (error) {
       if (mounted) setState(() => _formError = friendlyError(error));
     } finally {
@@ -160,7 +268,12 @@ class _VoicePayScreenState extends ConsumerState<VoicePayScreen> {
     try {
       final result = await ref
           .read(shamwariApiProvider)
-          .confirmVoice(txnId: pending.id, confirmWord: _yes, pin: _pin);
+          .confirmVoice(
+            txnId: pending.id,
+            confirmWord: _yes,
+            pin: _pin,
+            riskAck: _riskAck,
+          );
       if (!mounted) return;
       setState(() {
         _posted = result;
@@ -172,6 +285,7 @@ class _VoicePayScreenState extends ConsumerState<VoicePayScreen> {
         setState(() {
           _formError = friendlyError(error);
           _pin = '';
+          if (error is ApiException && error.code == 'bad_pin') _shakes += 1;
         });
       }
     } finally {
@@ -190,6 +304,27 @@ class _VoicePayScreenState extends ConsumerState<VoicePayScreen> {
     }
     if (_error != null || _catalog == null) {
       return ErrorPane(error: _error ?? 'Voice did not load.', onRetry: _load);
+    }
+    if (_pending != null) {
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+        children: [
+          const SectionLabel('Voice pay'),
+          Text(
+            'Read the warning. Then confirm.',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          _confirmCard(context),
+          if (_formError != null)
+            Text(
+              _formError!,
+              style: TextStyle(
+                color: palette.danger,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+        ],
+      );
     }
     final phrases = _catalog!.phrases
         .where((phrase) => phrase.language == _language)
@@ -282,6 +417,31 @@ class _VoicePayScreenState extends ConsumerState<VoicePayScreen> {
           child: Text(_busy ? 'Reading…' : 'Read the command'),
         ),
         const SizedBox(height: 14),
+        const SectionLabel('Sample clips'),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ActionChip(
+              key: const Key('sample-tumira-5-tendai'),
+              label: const Text('Shona · tumira \$5 kuna Tendai'),
+              onPressed: _busy ? null : () => _sample('tumira-5-tendai'),
+            ),
+            ActionChip(
+              key: const Key('sample-thumela-5-tendai'),
+              label: const Text('Ndebele · thumela \$5 ku Tendai'),
+              onPressed: _busy ? null : () => _sample('thumela-5-tendai'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          key: const Key('prize-desk'),
+          onPressed: _busy ? null : _prize,
+          child: const Text('Load the prize-desk scam warning'),
+        ),
+        const SizedBox(height: 14),
         const SectionLabel('Fixed demo phrases'),
         const SizedBox(height: 8),
         for (final phrase in phrases)
@@ -325,7 +485,6 @@ class _VoicePayScreenState extends ConsumerState<VoicePayScreen> {
             ),
           ),
         if (_heard != null) _result(context, _heard!),
-        if (_pending != null) _confirmCard(context),
         if (_posted != null)
           Padding(
             padding: const EdgeInsets.only(top: 12),
@@ -396,6 +555,17 @@ class _VoicePayScreenState extends ConsumerState<VoicePayScreen> {
               'Pending ${pending.display} · ${pending.counterparty}',
               style: const TextStyle(fontWeight: FontWeight.w800),
             ),
+            if (pending.risk.notable) ...[
+              const SizedBox(height: 8),
+              RiskWarning(
+                risk: pending.risk,
+                acknowledged: _riskAck,
+                busy: _busy,
+                onAcknowledge: () => setState(() => _riskAck = true),
+                onCancel: _cancelPending,
+              ),
+            ],
+            if (!pending.risk.requiresAck || _riskAck) ...[
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -409,14 +579,18 @@ class _VoicePayScreenState extends ConsumerState<VoicePayScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            PinPad(
-              pin: _pin,
-              onChanged: (value) => setState(() => _pin = value),
+            Shake(
+              token: _shakes,
+              child: PinPad(
+                pin: _pin,
+                onChanged: (value) => setState(() => _pin = value),
+              ),
             ),
             FilledButton(
               onPressed: _busy || _pin.length != 4 ? null : _confirm,
               child: const Text('Confirm voice payment'),
             ),
+            ],
           ],
         ),
       ),

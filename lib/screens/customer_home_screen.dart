@@ -6,8 +6,8 @@ import 'package:intl/intl.dart';
 import '../core/models/models.dart';
 import '../core/session/session.dart';
 import '../core/theme/shamwari_theme.dart';
-import '../widgets/charts.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/motion.dart';
 import '../widgets/states.dart';
 
 class CustomerHomeScreen extends ConsumerStatefulWidget {
@@ -66,7 +66,6 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.palette;
     final auth = ref.watch(authProvider);
     final first = (auth.user?.displayName ?? 'Rudo').split(' ').first;
     if (_loading) {
@@ -94,126 +93,40 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
         ? null
         : airtime.first;
 
+    final delta = wallet.week.deltaPct;
+    final goalName = wallet.goal?.name;
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
           Text(
-            'Welcome, $first! here’s your money snapshot for today',
-            style: const TextStyle(
-              fontSize: 28,
-              height: 1.15,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.6,
+            'Mhoro, $first',
+            style: TextStyle(
+              color: context.inkMuted,
+              fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 8),
           Text(
-            'Today is ${DateFormat('d MMMM y').format(DateTime.now())}',
-            style: TextStyle(color: context.inkMuted, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 4),
-          Text('Mhoro · $hello', style: TextStyle(color: palette.faint)),
-          const SizedBox(height: 14),
-          GlassCard(
-            radius: 999,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            onTap: () => context.go('/search'),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: palette.highContrast ? Colors.black : Colors.white,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.search_rounded,
-                    size: 18,
-                    color: palette.highContrast ? context.ink : palette.forest,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  'Search the book',
-                  style: TextStyle(color: palette.onCardMuted),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  "Today's stats",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                ),
-              ),
-              TextButton(
-                onPressed: () => context.go('/activity'),
-                style: TextButton.styleFrom(
-                  foregroundColor: context.ink,
-                  textStyle: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                child: const Text('View more'),
-              ),
-            ],
-          ),
-          SizedBox(
-            height: 168,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                _StatCard(
-                  label: 'Spent',
-                  value: wallet.week.display,
-                  chip: wallet.week.deltaPct == null
-                      ? 'No prior week'
-                      : '+${wallet.week.deltaPct}%',
-                  progress: (wallet.week.totalCents / 8000).clamp(0, 1),
-                  accent: true,
-                ),
-                _StatCard(
-                  label: 'Saved',
-                  value: wallet.goal?.displaySaved ?? '—',
-                  chip: wallet.goal?.name ?? 'No goal',
-                  progress: wallet.goal?.progress ?? 0,
-                ),
-                _StatCard(
-                  label: 'Airtime',
-                  value: airtimeShare == null
-                      ? '—'
-                      : '${(airtimeShare.share * 100).round()}%',
-                  chip: airtimeShare?.display ?? 'Open coach',
-                  progress: airtimeShare?.share ?? 0,
-                ),
-                _StatCard(
-                  label: 'Coach',
-                  value: '${_coach?.warnings.length ?? 0}',
-                  chip: 'Tips',
-                  progress: ((_coach?.warnings.length ?? 0) / 4).clamp(0, 1),
-                ),
-              ],
-            ),
+            hello,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 14),
           GlassCard(
-            radius: 30,
+            navy: true,
+            radius: 28,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    Expanded(
+                    const Expanded(
                       child: Text(
-                        '${wallet.customer.city} · ${wallet.customer.role}',
+                        'Your available balance',
                         style: TextStyle(
-                          color: palette.onCardMuted,
                           fontWeight: FontWeight.w700,
+                          color: Color(0xB3FFFFFF),
                         ),
                       ),
                     ),
@@ -223,46 +136,68 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 2),
                 Text(
-                  selected.displayBalance,
+                  '${wallet.customer.city} · ${wallet.customer.role}',
                   style: const TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -1,
+                    color: Color(0xB3FFFFFF),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                Text(
-                  'Available ${selected.displayAvailable}',
-                  style: TextStyle(color: palette.onCardMuted),
+                const SizedBox(height: 8),
+                Hero(
+                  tag: 'shamwari-balance',
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: MoneyHero(selected.displayAvailable),
+                  ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    FilledButton(
-                      onPressed: () => context.go('/send'),
-                      child: const Text('Send'),
+                    FadeSlideIn(
+                      child: _DeltaChip(
+                        delta == null ? 'No prior week' : '+$delta% this week',
+                        positive: delta == null || delta >= 0,
+                      ),
                     ),
-                    _Pill(
-                      'Pay',
-                      Icons.storefront_rounded,
-                      () => context.go('/send'),
+                    if (goalName != null)
+                      FadeSlideIn(
+                        index: 1,
+                        child: _DeltaChip(goalName, positive: true),
+                      ),
+                    if (airtimeShare != null)
+                      FadeSlideIn(
+                        index: 2,
+                        child: _DeltaChip(
+                          'Airtime ${(airtimeShare.share * 100).round()}%',
+                          positive: true,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    _QuickAction(
+                      icon: Icons.arrow_upward_rounded,
+                      label: 'Send',
+                      onTap: () => context.go('/send'),
                     ),
-                    _Pill(
-                      'Top-up',
-                      Icons.add_card_rounded,
-                      () => _gap(context, 'Top-up'),
+                    const SizedBox(width: 8),
+                    _QuickAction(
+                      icon: Icons.add_rounded,
+                      label: 'Top up',
+                      onTap: () => _gap(context, 'Top-up'),
                     ),
-                    _Pill(
-                      'Request',
-                      Icons.call_received_rounded,
-                      () => _gap(context, 'Request'),
-                    ),
-                    TextButton(
-                      onPressed: () => _safety(context),
-                      child: const Text('PIN and safety'),
+                    const SizedBox(width: 8),
+                    _QuickAction(
+                      icon: Icons.arrow_downward_rounded,
+                      label: 'Withdraw',
+                      onTap: () => _gap(context, 'Withdraw'),
                     ),
                   ],
                 ),
@@ -270,65 +205,46 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              const Text(
-                'Spending',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: palette.highContrast ? Colors.black : Colors.white,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  'This Week',
-                  style: TextStyle(
-                    color: palette.highContrast ? context.ink : palette.forest,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
+          const Text(
+            'Also in the wallet',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
-          GlassCard(child: WeekBars(days: wallet.week.days)),
-          const SizedBox(height: 12),
-          GlassCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  wallet.goal?.name ?? 'This week',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final entry in [
+                ('/voice', 'Voice notes', Icons.mic_rounded),
+                ('/chat', 'Chat', Icons.chat_bubble_outline_rounded),
+                ('/ussd', 'USSD', Icons.dialpad_rounded),
+                ('/coach', 'Coach', Icons.auto_awesome_rounded),
+                ('/scam', 'Scam check', Icons.shield_rounded),
+              ])
+                FadeSlideIn(
+                  child: ActionChip(
+                    avatar: Icon(entry.$3, size: 16),
+                    label: Text(entry.$2),
+                    onPressed: () => context.go(entry.$1),
+                  ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'The marker sits on the peak day.',
-                  style: TextStyle(color: palette.onCardMuted, fontSize: 12),
-                ),
-                const SizedBox(height: 8),
-                WeekWave(days: wallet.week.days),
-              ],
-            ),
+            ],
           ),
           const SizedBox(height: 16),
           Row(
             children: [
-              Text(
-                'Recent activity · $_slips slips',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              Expanded(
+                child: Text(
+                  _slips == 0
+                      ? 'Recent activity'
+                      : 'Recent activity · $_slips slips',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
               ),
-              const Spacer(),
               TextButton(
                 onPressed: () => context.go('/activity'),
-                style: TextButton.styleFrom(
-                  foregroundColor: context.ink,
-                  textStyle: const TextStyle(fontWeight: FontWeight.w800),
-                ),
                 child: const Text('See all'),
               ),
             ],
@@ -352,14 +268,18 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
                     style: TextStyle(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    _coach!.warnings.first,
-                    style: const TextStyle(height: 1.35),
-                  ),
+                  Text(_coach!.warnings.first),
                 ],
               ),
             ),
           ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => _safety(context),
+              child: const Text('PIN and safety'),
+            ),
+          ),
         ],
       ),
     );
@@ -426,7 +346,7 @@ class _CurrencyToggle extends StatelessWidget {
                   style: TextStyle(
                     color: value == code
                         ? (palette.highContrast ? Colors.black : palette.forest)
-                        : palette.onCard,
+                        : Colors.white,
                     fontWeight: FontWeight.w800,
                     fontSize: 12,
                   ),
@@ -439,155 +359,62 @@ class _CurrencyToggle extends StatelessWidget {
   }
 }
 
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.chip,
-    required this.progress,
-    this.accent = false,
-  });
+class _DeltaChip extends StatelessWidget {
+  const _DeltaChip(this.label, {required this.positive});
 
   final String label;
-  final String value;
-  final String chip;
-  final double progress;
-  final bool accent;
+  final bool positive;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.palette;
-    final ring = palette.highContrast
-        ? palette.orange
-        : (accent ? palette.orange : palette.forest);
-    return Padding(
-      padding: const EdgeInsets.only(right: 10),
-      child: SizedBox(
-        width: 148,
-        child: GlassCard(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: TextStyle(color: palette.onCardMuted, fontSize: 12)),
-              const Spacer(),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      value,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 36,
-                    height: 36,
-                    child: CustomPaint(
-                      painter: _MiniRing(progress: progress, color: ring),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: palette.highContrast
-                      ? Colors.black
-                      : palette.forest.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  chip,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: palette.onCard,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+    final color = positive ? const Color(0xFFBBF7D0) : const Color(0xFFFECACA);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 12),
       ),
     );
   }
 }
 
-class _MiniRing extends CustomPainter {
-  _MiniRing({required this.progress, required this.color});
-  final double progress;
-  final Color color;
+class _QuickAction extends StatelessWidget {
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5
-      ..strokeCap = StrokeCap.round;
-    final rect = Offset.zero & size;
-    canvas.drawArc(
-      rect.deflate(4),
-      -1.5708,
-      6.2832,
-      false,
-      paint..color = color.withValues(alpha: 0.18),
-    );
-    canvas.drawArc(
-      rect.deflate(4),
-      -1.5708,
-      6.2832 * progress.clamp(0, 1),
-      false,
-      paint..color = color,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _MiniRing oldDelegate) =>
-      oldDelegate.progress != progress || oldDelegate.color != color;
-}
-
-class _Pill extends StatelessWidget {
-  const _Pill(this.label, this.icon, this.onTap);
-  final String label;
   final IconData icon;
+  final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.palette;
-    final foreground = palette.highContrast ? palette.orange : palette.forest;
-    return Material(
-      color: palette.highContrast ? Colors.black : Colors.white,
-      elevation: palette.highContrast ? 0 : 2,
-      shadowColor: const Color(0x400F3B33),
-      shape: StadiumBorder(
-        side: BorderSide(
-          color: palette.highContrast
-              ? palette.border
-              : palette.forest.withValues(alpha: 0.16),
-          width: palette.highContrast ? 2 : 1,
-        ),
-      ),
-      child: InkWell(
-        customBorder: const StadiumBorder(),
+    return Expanded(
+      child: Pressable(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+          ),
+          child: Column(
             children: [
-              Icon(icon, size: 16, color: foreground),
-              const SizedBox(width: 6),
+              Icon(icon, color: Colors.white, size: 20),
+              const SizedBox(height: 4),
               Text(
                 label,
-                style: TextStyle(
-                  color: foreground,
+                style: const TextStyle(
+                  color: Colors.white,
                   fontWeight: FontWeight.w800,
+                  fontSize: 12,
                 ),
               ),
             ],
@@ -597,7 +424,6 @@ class _Pill extends StatelessWidget {
     );
   }
 }
-
 
 class _ActivityTile extends StatelessWidget {
   const _ActivityTile({required this.txn});
@@ -605,20 +431,21 @@ class _ActivityTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.palette;
     final outgoing = txn.outgoing ?? true;
+    final amountColor = outgoing ? const Color(0xFFFDA4AF) : const Color(0xFF6EE7B7);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: GlassCard(
+        navy: true,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: [
             CircleAvatar(
-              backgroundColor: palette.orange.withValues(alpha: 0.15),
+              backgroundColor: Colors.white.withValues(alpha: 0.16),
               child: Text(
                 txn.initials ?? '•',
-                style: TextStyle(
-                  color: palette.orange,
+                style: const TextStyle(
+                  color: Colors.white,
                   fontWeight: FontWeight.w800,
                   fontSize: 12,
                 ),
@@ -635,17 +462,17 @@ class _ActivityTile extends StatelessWidget {
                   ),
                   Text(
                     _when(txn.createdAt),
-                    style: TextStyle(color: context.inkMuted, fontSize: 12),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.65),
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
             ),
             Text(
               '${outgoing ? '−' : '+'} ${txn.display}',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: outgoing ? palette.orange : palette.ok,
-              ),
+              style: TextStyle(fontWeight: FontWeight.w800, color: amountColor),
             ),
           ],
         ),

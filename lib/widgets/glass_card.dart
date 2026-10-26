@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../core/theme/shamwari_theme.dart';
+import 'motion.dart';
 
 class GlassCard extends StatelessWidget {
   const GlassCard({
@@ -12,6 +13,7 @@ class GlassCard extends StatelessWidget {
     this.onTap,
     this.radius = 28,
     this.tint,
+    this.navy = false,
   });
 
   final Widget child;
@@ -20,16 +22,23 @@ class GlassCard extends StatelessWidget {
   final double radius;
   final Color? tint;
 
+  /// Deep navy hero and list cards. Type inside is white.
+  final bool navy;
+
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final radiusValue = BorderRadius.circular(radius);
     final top = palette.highContrast
         ? palette.card
-        : Colors.white.withValues(alpha: palette.lightGlass ? 0.62 : 0.16);
+        : navy
+        ? const Color(0xFF1A3E78)
+        : Colors.white.withValues(alpha: palette.lightGlass ? 0.72 : 0.16);
     final bottom = palette.highContrast
         ? palette.card
-        : Colors.white.withValues(alpha: palette.lightGlass ? 0.38 : 0.08);
+        : navy
+        ? const Color(0xFF0E2A56)
+        : Colors.white.withValues(alpha: palette.lightGlass ? 0.46 : 0.08);
     final decorated = DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: radiusValue,
@@ -50,7 +59,7 @@ class GlassCard extends StatelessWidget {
         boxShadow: palette.glass && shamwariAllowBlur && !palette.highContrast
             ? [
                 BoxShadow(
-                  color: const Color(0xFF0F3B33).withValues(alpha: 0.08),
+                  color: const Color(0xFF0E2A56).withValues(alpha: 0.12),
                   blurRadius: 24,
                   offset: const Offset(0, 12),
                 ),
@@ -60,10 +69,19 @@ class GlassCard extends StatelessWidget {
       child: Material(
         type: MaterialType.transparency,
         child: CardInk(
+          navy: navy && !palette.highContrast,
           child: IconTheme(
-            data: IconThemeData(color: palette.onCard),
+            data: IconThemeData(
+              color: navy && !palette.highContrast
+                  ? Colors.white
+                  : palette.onCard,
+            ),
             child: DefaultTextStyle.merge(
-              style: TextStyle(color: palette.onCard),
+              style: TextStyle(
+                color: navy && !palette.highContrast
+                    ? Colors.white
+                    : palette.onCard,
+              ),
               child: Padding(padding: padding, child: child),
             ),
           ),
@@ -80,10 +98,7 @@ class GlassCard extends StatelessWidget {
           : decorated,
     );
     if (onTap == null) return clipped;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(onTap: onTap, borderRadius: radiusValue, child: clipped),
-    );
+    return Pressable(onTap: onTap, child: clipped);
   }
 }
 

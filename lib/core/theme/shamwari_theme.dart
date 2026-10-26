@@ -52,19 +52,19 @@ class ShamwariPalette extends ThemeExtension<ShamwariPalette> {
   final bool highContrast;
   final Color onAccent;
 
-  /// Deeper sage night. The nav pill stays darker than the field.
+  /// Night version of the same sky-and-navy system.
   static const dark = ShamwariPalette(
-    bg: Color(0xFF2A4740),
-    bgElevated: Color(0xFF3E6158),
-    card: Color(0xFF1A3330),
-    text: Color(0xFFF4F7F6),
-    muted: Color(0xFFC5D5CF),
-    faint: Color(0xFF8AA39B),
-    orange: Color(0xFFF97316),
-    teal: Color(0xFF8FBFB4),
-    forest: Color(0xFF0C2420),
-    onCard: Color(0xFFF4F7F6),
-    onCardMuted: Color(0xFFC5D5CF),
+    bg: Color(0xFF0C2344),
+    bgElevated: Color(0xFF16325C),
+    card: Color(0xFF0A1C38),
+    text: Color(0xFFF4F8FF),
+    muted: Color(0xFFC5D4EA),
+    faint: Color(0xFF8AA0C2),
+    orange: Color(0xFF7EB6FF),
+    teal: Color(0xFF9CC4FF),
+    forest: Color(0xFF071628),
+    onCard: Color(0xFFF4F8FF),
+    onCardMuted: Color(0xFFC5D4EA),
     lightGlass: false,
     border: Color(0x38FFFFFF),
     danger: Color(0xFFFB7185),
@@ -75,24 +75,24 @@ class ShamwariPalette extends ThemeExtension<ShamwariPalette> {
     onAccent: Colors.white,
   );
 
-  /// Default. Soft sage field, frosted white cards, forest-teal selection.
+  /// Default. Soft sky field, light glass cards, deep navy type and heroes.
   static const light = ShamwariPalette(
-    bg: Color(0xFF6F8A80),
-    bgElevated: Color(0xFFA9BDB5),
+    bg: Color(0xFF8EBFEE),
+    bgElevated: Color(0xFFD7EBFA),
     card: Color(0xFFFFFFFF),
-    text: Color(0xFFFFFFFF),
-    muted: Color(0xE6FFFFFF),
-    faint: Color(0xB3FFFFFF),
-    orange: Color(0xFFF97316),
-    teal: Color(0xFF0F3B33),
-    forest: Color(0xFF0F3B33),
-    onCard: Color(0xFF0F3B33),
-    onCardMuted: Color(0xFF3E5A52),
+    text: Color(0xFF0B1E3F),
+    muted: Color(0xFF2C4A73),
+    faint: Color(0xFF4E6E99),
+    orange: Color(0xFF2F6FED),
+    teal: Color(0xFF3D6FB5),
+    forest: Color(0xFF0E2A56),
+    onCard: Color(0xFF0E2A56),
+    onCardMuted: Color(0xFF4A6490),
     lightGlass: true,
-    border: Color(0xBFFFFFFF),
-    danger: Color(0xFFBE123C),
-    ok: Color(0xFF047857),
-    warning: Color(0xFFC2410C),
+    border: Color(0xCCFFFFFF),
+    danger: Color(0xFFE11D48),
+    ok: Color(0xFF059669),
+    warning: Color(0xFFD97706),
     glass: true,
     highContrast: false,
     onAccent: Colors.white,
@@ -176,22 +176,35 @@ extension ShamwariThemeContext on BuildContext {
   ShamwariPalette get palette =>
       Theme.of(this).extension<ShamwariPalette>() ?? ShamwariPalette.light;
 
-  /// Type color for the current surface: white on the sage field, forest inside a light card.
-  Color get ink => CardInk.contains(this) ? palette.onCard : palette.text;
+  /// Type color for the current surface: navy on the sky, white inside a navy card.
+  Color get ink {
+    if (CardInk.navyOf(this) && !palette.highContrast) return Colors.white;
+    return CardInk.contains(this) ? palette.onCard : palette.text;
+  }
 
-  Color get inkMuted =>
-      CardInk.contains(this) ? palette.onCardMuted : palette.muted;
+  Color get inkMuted {
+    if (CardInk.navyOf(this) && !palette.highContrast) {
+      return Colors.white.withValues(alpha: 0.65);
+    }
+    return CardInk.contains(this) ? palette.onCardMuted : palette.muted;
+  }
 }
 
 /// Marks a frosted card so nested text picks up [ShamwariPalette.onCard].
 class CardInk extends InheritedWidget {
-  const CardInk({super.key, required super.child});
+  const CardInk({super.key, required super.child, this.navy = false});
 
-  static bool contains(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<CardInk>() != null;
+  final bool navy;
+
+  static CardInk? _of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<CardInk>();
+
+  static bool contains(BuildContext context) => _of(context) != null;
+
+  static bool navyOf(BuildContext context) => _of(context)?.navy ?? false;
 
   @override
-  bool updateShouldNotify(CardInk oldWidget) => false;
+  bool updateShouldNotify(CardInk oldWidget) => navy != oldWidget.navy;
 }
 
 ThemeData shamwariTheme(ShamwariPalette palette) {
@@ -412,27 +425,45 @@ class ShamwariBackdrop extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final sky = palette.lightGlass;
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [palette.bg, palette.bgElevated],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: sky
+              ? const [Color(0xFFD7EBFA), Color(0xFF8EBFEE), Color(0xFF6AA6E4)]
+              : [palette.bg, palette.bgElevated, palette.bg],
         ),
       ),
       child: Stack(
         fit: StackFit.expand,
         children: [
+          if (palette.glass)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: _WavePainter(
+                    color: sky ? Colors.white : const Color(0xFF7EB6FF),
+                    alpha: sky ? 0.28 : 0.08,
+                  ),
+                ),
+              ),
+            ),
           if (palette.glass) ...[
             const Positioned(
-              top: -110,
-              right: -40,
-              child: _Glow(color: Color(0xFFFFFFFF), size: 260, alpha: 0.16),
+              top: -120,
+              right: -30,
+              child: _Glow(color: Color(0xFFFFFFFF), size: 280, alpha: 0.35),
             ),
-            const Positioned(
-              bottom: -20,
-              left: -70,
-              child: _Glow(color: Color(0xFF0F3B33), size: 240, alpha: 0.14),
+            Positioned(
+              bottom: 40,
+              left: -80,
+              child: _Glow(
+                color: sky ? const Color(0xFF5B93D6) : const Color(0xFF16325C),
+                size: 240,
+                alpha: 0.22,
+              ),
             ),
           ],
           child,
@@ -440,6 +471,39 @@ class ShamwariBackdrop extends StatelessWidget {
       ),
     );
   }
+}
+
+class _WavePainter extends CustomPainter {
+  _WavePainter({required this.color, required this.alpha});
+
+  final Color color;
+  final double alpha;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: alpha)
+      ..style = PaintingStyle.fill;
+    for (final band in [0.22, 0.48, 0.74]) {
+      final path = Path()..moveTo(0, size.height * band);
+      for (var x = 0.0; x <= size.width; x += 8) {
+        final y =
+            size.height * band +
+            18 * (x / size.width) * (0.5 - (x / size.width)) * 8 +
+            10 * (x / 90);
+        path.lineTo(x, y);
+      }
+      path
+        ..lineTo(size.width, size.height)
+        ..lineTo(0, size.height)
+        ..close();
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WavePainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.alpha != alpha;
 }
 
 class _Glow extends StatelessWidget {

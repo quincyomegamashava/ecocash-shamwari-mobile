@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../core/api/api_exception.dart';
 import '../core/models/models.dart';
@@ -7,6 +8,7 @@ import '../core/session/session.dart';
 import '../core/theme/shamwari_theme.dart';
 import '../widgets/charts.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/motion.dart';
 import '../widgets/states.dart';
 
 class PulseScreen extends ConsumerStatefulWidget {
@@ -18,6 +20,7 @@ class PulseScreen extends ConsumerStatefulWidget {
 
 class _PulseScreenState extends ConsumerState<PulseScreen> {
   PulseSnapshot? _pulse;
+  ImpactReport? _impact;
   String? _prose;
   bool _loading = true;
   bool _busy = false;
@@ -36,11 +39,14 @@ class _PulseScreenState extends ConsumerState<PulseScreen> {
     });
     try {
       final pace = ref.read(loadPaceProvider);
-      final pulse = await ref.read(shamwariApiProvider).pulse();
+      final api = ref.read(shamwariApiProvider);
+      final pulse = await api.pulse();
+      final impact = await api.impact();
       await Future<void>.delayed(pace);
       if (!mounted) return;
       setState(() {
         _pulse = pulse;
+        _impact = impact;
         _prose ??= pulse.points.join(' ');
         _loading = false;
       });
@@ -126,7 +132,7 @@ class _PulseScreenState extends ConsumerState<PulseScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
         children: [
-          const SectionLabel('Insights'),
+          const SectionLabel('Care desk'),
           Text(
             'Live customer pulse.',
             style: Theme.of(context).textTheme.headlineMedium,
@@ -135,6 +141,10 @@ class _PulseScreenState extends ConsumerState<PulseScreen> {
             'Harare, Bulawayo, Mutare and the other towns. Charts are drawn from the JSON series.',
             style: TextStyle(color: context.inkMuted),
           ),
+          if (_impact != null) ...[
+            const SizedBox(height: 12),
+            _ImpactCard(report: _impact!),
+          ],
           const SizedBox(height: 12),
           GlassCard(
             child: Column(
@@ -289,6 +299,8 @@ class _PulseScreenState extends ConsumerState<PulseScreen> {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: GlassCard(
+                  key: Key('pulse-${item.id}'),
+                  onTap: () => context.go('/pulse/case/${item.id}'),
                   padding: const EdgeInsets.all(12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -305,10 +317,113 @@ class _PulseScreenState extends ConsumerState<PulseScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(item.text),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Open copilot',
+                        style: TextStyle(
+                          color: palette.teal,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImpactCard extends StatelessWidget {
+  const _ImpactCard({required this.report});
+
+  final ImpactReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final tiles = [
+      ('${report.timeSavedMinutes.total}', 'minutes saved', report.timeSavedMinutes.label),
+      ('${report.ticketsDeflected.total}', 'tickets deflected', report.ticketsDeflected.label),
+      ('${report.scamsBlocked.total}', 'scams blocked', report.scamsBlocked.label),
+      ('${report.transfersViaAi.total}', 'AI transfers', report.transfersViaAi.label),
+    ];
+    return GlassCard(
+      key: const Key('impact-card'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Impact this week',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ),
+              if (report.simulated)
+                Text(
+                  'Simulated demo',
+                  style: TextStyle(
+                    color: context.inkMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final tile in tiles)
+                SizedBox(
+                  width: 150,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CountUpText(
+                          tile.$1,
+                          style: const TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                            height: 1,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          tile.$2,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          tile.$3,
+                          style: TextStyle(
+                            color: context.inkMuted,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            report.disclaimer,
+            style: TextStyle(color: context.inkMuted, fontSize: 12, height: 1.35),
+          ),
         ],
       ),
     );
