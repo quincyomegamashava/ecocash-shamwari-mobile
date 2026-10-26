@@ -1,0 +1,220 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../core/models/models.dart';
+import '../core/session/session.dart';
+import '../core/theme/shamwari_theme.dart';
+import '../widgets/glass_card.dart';
+import '../widgets/sage_ui.dart';
+
+class ProfileScreen extends ConsumerStatefulWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  WalletSnapshot? _wallet;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_load);
+  }
+
+  Future<void> _load() async {
+    final auth = ref.read(authProvider);
+    if (!auth.isCustomer) return;
+    try {
+      final wallet = await ref.read(shamwariApiProvider).wallet();
+      if (mounted) setState(() => _wallet = wallet);
+    } catch (_) {
+      // Profile still renders from the signed-in account.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final auth = ref.watch(authProvider);
+    final settings = ref.watch(settingsProvider);
+    final name = auth.user?.displayName ?? 'Shamwari';
+    final role = auth.isStaff ? 'Care team' : 'Customer';
+    final city = _wallet?.customer.city ?? (auth.isStaff ? 'Harare desk' : '');
+    final initials = name
+        .split(' ')
+        .where((part) => part.isNotEmpty)
+        .take(2)
+        .map((part) => part[0])
+        .join()
+        .toUpperCase();
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+      children: [
+        const Text(
+          'Profile',
+          style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 12),
+        GlassCard(
+          radius: 30,
+          child: Column(
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: palette.highContrast ? Colors.black : palette.forest,
+                  border: Border.all(
+                    color: palette.highContrast ? palette.orange : Colors.white,
+                    width: palette.highContrast ? 2 : 1.5,
+                  ),
+                ),
+                child: Text(
+                  initials.isEmpty ? 'S' : initials,
+                  style: TextStyle(
+                    color: palette.highContrast ? palette.orange : Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                name,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+              Text(
+                city.isEmpty ? role : '$city · $role',
+                style: TextStyle(color: palette.onCardMuted),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  _Tile(
+                    label: 'Balance',
+                    value: auth.isStaff
+                        ? 'Care'
+                        : (_wallet?.wallets.isNotEmpty == true
+                              ? _wallet!.wallets.first.displayBalance
+                              : '—'),
+                  ),
+                  const SizedBox(width: 8),
+                  _Tile(
+                    label: auth.isStaff ? 'Desk' : 'Saved',
+                    value: auth.isStaff
+                        ? 'Live'
+                        : (_wallet?.goal?.displaySaved ?? '—'),
+                  ),
+                  const SizedBox(width: 8),
+                  _Tile(
+                    label: auth.isStaff ? 'Book' : 'Week',
+                    value: auth.isStaff
+                        ? 'Synthetic'
+                        : (_wallet?.week.display ?? '—'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        const Text(
+          'Account settings',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 8),
+        if (auth.isCustomer)
+          SettingsPill(
+            icon: Icons.accessibility_new_rounded,
+            title: 'Accessibility',
+            subtitle: 'Type, contrast, spoken balances',
+            onTap: () => context.go('/accessibility'),
+          ),
+        SettingsPill(
+          icon: auth.isStaff ? Icons.insights_rounded : Icons.history_rounded,
+          title: auth.isStaff ? 'Customer pulse' : 'Activity',
+          onTap: () => context.go(auth.isStaff ? '/pulse' : '/activity'),
+        ),
+        SettingsPill(
+          icon: Icons.search_rounded,
+          title: 'Search',
+          onTap: () => context.go('/search'),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Preferences',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 8),
+        SettingsPill(
+          icon: Icons.dark_mode_outlined,
+          title: 'Dark sage',
+          subtitle: 'A deeper version of this palette',
+          trailing: Switch(
+            value: settings.themeMode == ThemeMode.dark,
+            onChanged: (value) => ref
+                .read(settingsProvider.notifier)
+                .setThemeMode(value ? ThemeMode.dark : ThemeMode.light),
+          ),
+        ),
+        SettingsPill(
+          icon: Icons.contrast_rounded,
+          title: 'High contrast',
+          subtitle: 'Black and yellow',
+          trailing: Switch(
+            value: settings.highContrast,
+            onChanged: (value) =>
+                ref.read(settingsProvider.notifier).setHighContrast(value),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Tile extends StatelessWidget {
+  const _Tile({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        decoration: BoxDecoration(
+          color: palette.highContrast
+              ? Colors.black
+              : Colors.white.withValues(alpha: palette.lightGlass ? 0.55 : 0.08),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: palette.highContrast
+                ? palette.border
+                : Colors.white.withValues(alpha: 0.6),
+          ),
+        ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+            ),
+            Text(
+              label,
+              style: TextStyle(color: palette.onCardMuted, fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

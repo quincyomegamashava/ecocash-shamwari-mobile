@@ -1,0 +1,2338 @@
+openapi: 3.0.3
+info:
+  title: Shamwari Mobile API
+  version: "1.0.0"
+  description: |
+    JSON API for the Shamwari Flutter client. Browser pages keep session cookies
+    and CSRF. Mobile clients use a bearer token from POST /api/v1/auth/login.
+    Money is integer cents. Every record is synthetic. The payment PIN is 2580
+    and is accepted only by the confirm routes. Those routes do not call the model.
+    See docs/API.md for the narrative contract.
+servers:
+  - url: http://127.0.0.1:8642
+    description: This computer, or the iOS simulator
+  - url: http://10.0.2.2:8642
+    description: Android emulator reaching the host machine
+  - url: http://{lan}:8642
+    description: A phone on the same Wi-Fi. lan is this computer's address, not 127.0.0.1.
+    variables:
+      lan:
+        default: 192.168.1.20
+tags:
+  - name: Auth
+  - name: Customer
+  - name: Voice
+  - name: Coach
+  - name: Scam
+  - name: Receipts
+  - name: Accessibility
+  - name: Care
+  - name: Demo
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Issue a bearer token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              username: rudo
+              password: rudo-demo
+      responses:
+        "200":
+          description: Token issued. The raw token is not stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+              example:
+                ok: true
+                synthetic: true
+                data:
+                  token: example-bearer-token
+                  token_type: Bearer
+                  expires_at: "2026-11-09T06:46:18Z"
+                  user:
+                    id: 1
+                    username: rudo
+                    role: customer
+                    display_name: Rudo Moyo
+                    customer_id: 1
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the bearer token
+      responses:
+        "200":
+          description: Token revoked. The browser session is left alone.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevokeResponse"
+              example:
+                ok: true
+                synthetic: true
+                data:
+                  revoked: true
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: Current account
+      responses:
+        "200":
+          description: User, plus the linked customer when the role is customer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/health:
+    get:
+      tags: [Auth]
+      summary: API liveness and AI mode
+      security: []
+      responses:
+        "200":
+          description: Public health. ai_mode is mock or caimex.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                ok: true
+                synthetic: true
+                data:
+                  version: v1
+                  ai_mode: mock
+                  ai_label: Mock
+                  customers: 8
+  /api/v1/wallet:
+    get:
+      tags: [Customer]
+      summary: Balances, goal, and week spend
+      description: Customer role. Available cents subtract pending outgoing holds. Posted balance does not move until confirm.
+      responses:
+        "200":
+          description: Rudo's book on the seeded database.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/transactions:
+    get:
+      tags: [Customer]
+      summary: Transactions for the signed-in customer
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Newest id first. Sender or recipient.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/activity:
+    get:
+      tags: [Customer]
+      summary: Recent activity for the home screen
+      responses:
+        "200":
+          description: Up to 8 transactions with a display name and initials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/contacts:
+    get:
+      tags: [Customer]
+      summary: People this customer can pay
+      responses:
+        "200":
+          description: Seeded contacts for Rudo.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactListResponse"
+              example:
+                ok: true
+                synthetic: true
+                data:
+                  contacts:
+                    - id: 1
+                      name: Mai Tendai
+                      city: Chitungwiza
+                      customer_id: 2
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/merchants:
+    get:
+      tags: [Customer]
+      summary: Synthetic merchants
+      description: Either signed-in role.
+      responses:
+        "200":
+          description: Ordered by name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/transfers:
+    post:
+      tags: [Customer]
+      summary: Create a pending transfer
+      description: Does not post money and does not call the model.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferCreate"
+            example:
+              kind: transfer
+              amount_cents: 2000
+              currency: USD
+              recipient_name: Mai Tendai
+      responses:
+        "201":
+          description: Pending transaction.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferOutcomeResponse"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/transfers/{txn_id}:
+    get:
+      tags: [Customer]
+      summary: One transfer on this profile
+      parameters:
+        - $ref: "#/components/parameters/TxnId"
+      responses:
+        "200":
+          description: The transaction.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferOutcomeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/transfers/{txn_id}/confirm:
+    post:
+      tags: [Customer]
+      summary: Post a pending transfer
+      description: |
+        Checks the yes word and the PIN locally. Does not call the AI provider,
+        does not log the PIN, and does not return the PIN.
+      parameters:
+        - $ref: "#/components/parameters/TxnId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmRequest"
+            example:
+              confirm_word: hongu
+              pin: "2580"
+      responses:
+        "200":
+          description: Posted, or already posted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfirmResponse"
+        "400":
+          description: need_yes, bad_pin, or insufficient. The transaction stays pending inside error.details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: not_pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/v1/transfers/{txn_id}/cancel:
+    post:
+      tags: [Customer]
+      summary: Cancel a pending transfer
+      parameters:
+        - $ref: "#/components/parameters/TxnId"
+      responses:
+        "200":
+          description: Cancelled. No money moved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferOutcomeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: not_pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/v1/voice/phrases:
+    get:
+      tags: [Voice]
+      summary: Locked Shona, Ndebele, and English phrases
+      responses:
+        "200":
+          description: Phrase list, yes words, and the demo PIN rule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhrasesResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/voice/interpret:
+    post:
+      tags: [Voice]
+      summary: Interpret a transcript or an audio upload
+      description: |
+        JSON text, or multipart field audio. If both are sent, text wins.
+        Mock mode cannot hear audio and returns transcript_empty.
+        PIN-like text is scrubbed before the provider sees it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InterpretText"
+            example:
+              text: tumira madhora makumi maviri kuna Mai Tendai
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                text:
+                  type: string
+                language:
+                  type: string
+                  enum: [sn, nd, en]
+      responses:
+        "200":
+          description: A plan. Payment plans with an empty missing list can be prepared.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterpretResponse"
+        "400":
+          description: validation or transcript_empty
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/voice/prepare:
+    post:
+      tags: [Voice]
+      summary: Turn a plan into a pending transfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareRequest"
+      responses:
+        "201":
+          description: Pending. Confirm separately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferOutcomeResponse"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/voice/confirm:
+    post:
+      tags: [Voice]
+      summary: Confirm a voice transfer by id in the body
+      description: Same local PIN check as POST /api/v1/transfers/{txn_id}/confirm. The PIN is not sent to the model.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceConfirmRequest"
+            example:
+              txn_id: 40
+              confirm_word: yebo
+              pin: "2580"
+      responses:
+        "200":
+          description: Posted or already posted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfirmResponse"
+        "400":
+          description: need_yes, bad_pin, or insufficient
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: not_pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/v1/coach:
+    get:
+      tags: [Coach]
+      summary: Coach suggestions, warnings, and thread
+      responses:
+        "200":
+          description: Ledger-backed coach state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/coach/messages:
+    post:
+      tags: [Coach]
+      summary: Ask the financial coach
+      description: Figures come from the ledger. The model only phrases them. PIN-like text is scrubbed before storage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  maxLength: 2000
+            example:
+              text: Can I still make my school fees goal?
+      responses:
+        "200":
+          description: The new reply and the full thread.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachMessageResponse"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/scam/samples:
+    get:
+      tags: [Scam]
+      summary: Sample SMS and call scripts
+      responses:
+        "200":
+          description: reversal, prize, agent, family, pressure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScamSampleResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/scam/check:
+    post:
+      tags: [Scam]
+      summary: Score an SMS or a sample id
+      description: The final verdict is never softer than the local pattern list.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sample:
+                  type: string
+                  description: reversal, prize, agent, family, or pressure
+                text:
+                  type: string
+                  maxLength: 2000
+            example:
+              sample: reversal
+      responses:
+        "200":
+          description: Verdict, rules verdict, patterns, and next steps.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScamCheckResponse"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/receipts:
+    get:
+      tags: [Receipts]
+      summary: Slips saved on Rudo's Tuckshop
+      responses:
+        "200":
+          description: Merchant plus entries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Receipts]
+      summary: Save a reviewed slip
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceiptSave"
+            example:
+              vendor: Mbare Fresh Produce
+              receipt_date: "2026-10-20"
+              currency: USD
+              total_cents: 550
+              notes: ""
+              items:
+                - description: Tomatoes 2kg
+                  amount_cents: 400
+                - description: Onions 1kg
+                  amount_cents: 150
+      responses:
+        "201":
+          description: Saved entry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReceiptSaveResponse"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/receipts/samples:
+    get:
+      tags: [Receipts]
+      summary: Sample slip metadata and QR payloads
+      responses:
+        "200":
+          description: Filenames only. Fetch bytes from the sample route.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SampleListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/receipts/samples/{sample_name}:
+    get:
+      tags: [Receipts]
+      summary: PNG bytes for one sample, base64 inside JSON
+      parameters:
+        - in: path
+          name: sample_name
+          required: true
+          schema:
+            type: string
+          description: mbare-fresh.png, green-basket.png, qr-till.png, or qr-pay.png
+      responses:
+        "200":
+          description: media_type image/png and base64 of the file.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SampleFileResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/receipts/read:
+    post:
+      tags: [Receipts]
+      summary: Read a sample slip or an uploaded image
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sample:
+                  type: string
+                  example: mbare-fresh.png
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                sample:
+                  type: string
+      responses:
+        "200":
+          description: Extraction in cents. source is sample, caimex, or manual.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtractionResponse"
+              example:
+                ok: true
+                synthetic: true
+                data:
+                  extraction:
+                    vendor: Mbare Fresh Produce
+                    date: "2026-10-20"
+                    currency: USD
+                    total_cents: 550
+                    display: "US$ 5.50"
+                    items:
+                      - description: Tomatoes 2kg
+                        amount_cents: 400
+                      - description: Onions 1kg
+                        amount_cents: 150
+                    note: Synthetic till slip for the tuckshop ledger.
+                    source: sample
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/receipts/export:
+    get:
+      tags: [Receipts]
+      summary: Tuckshop ledger as a CSV string
+      responses:
+        "200":
+          description: filename rudo-tuckshop-ledger.csv
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CsvResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/accessibility:
+    get:
+      tags: [Accessibility]
+      summary: Accessibility settings, spoken balance, and QR text
+      responses:
+        "200":
+          description: Settings default to large type off, contrast off, speak on.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessibilityResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags: [Accessibility]
+      summary: Update accessibility booleans
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessibilityUpdate"
+            example:
+              large_type: true
+              high_contrast: true
+              speak_balances: true
+      responses:
+        "200":
+          description: Stored settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessibilityUpdateResponse"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/pulse:
+    get:
+      tags: [Care]
+      summary: Pulse dashboard as JSON series
+      description: Staff role. Not Plotly HTML.
+      responses:
+        "200":
+          description: points, complaints, series, and feed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PulseResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/pulse/publish:
+    post:
+      tags: [Care]
+      summary: Publish the next synthetic pulse item
+      responses:
+        "200":
+          description: The new item and refreshed series.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PulsePublishResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/pulse/highlight:
+    post:
+      tags: [Care]
+      summary: Executive note from the pulse points
+      responses:
+        "200":
+          description: prose falls back to the points if the provider errors.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HighlightResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/onboarding/documents:
+    get:
+      tags: [Care]
+      summary: Fictional SOP markdown, without quiz answers
+      responses:
+        "200":
+          description: fiction is true. Not EcoCash policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/onboarding/ask:
+    post:
+      tags: [Care]
+      summary: Ask the onboarding buddy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question:
+                  type: string
+                  maxLength: 500
+            example:
+              question: What do I do if a customer is asked for their PIN?
+      responses:
+        "200":
+          description: Answer plus cited SOP hits.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AskResponse"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/onboarding/quiz:
+    post:
+      tags: [Care]
+      summary: Start a three-question quiz
+      description: The answer key is stored on the server and is not in this response.
+      responses:
+        "200":
+          description: Public questions only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuizResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/onboarding/quiz/score:
+    post:
+      tags: [Care]
+      summary: Score the stored quiz
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answers]
+              properties:
+                answers:
+                  type: object
+                  additionalProperties:
+                    type: string
+                    enum: [A, B, C, D]
+            example:
+              answers:
+                "0": C
+                "1": A
+                "2": B
+      responses:
+        "200":
+          description: correct, total, and per-question review including the answer letter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScoreResponse"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/ledger:
+    get:
+      tags: [Care]
+      summary: Customers, merchants, agents, transactions, and slips
+      description: Phones are masked. PIN hashes and passwords are not included.
+      responses:
+        "200":
+          description: The care book.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LedgerResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/ai-log:
+    get:
+      tags: [Care]
+      summary: Recent model-call metadata
+      description: Prompt text is never stored.
+      responses:
+        "200":
+          description: Up to 30 rows.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiLogResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/v1/search:
+    get:
+      tags: [Demo]
+      summary: Command search filtered by role
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Up to 12 rows. api_path is null when there is no mobile route.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/demo:
+    get:
+      tags: [Demo]
+      summary: Walk Rudo's morning as data
+      description: Pulse and onboarding steps require the care role. A customer token cannot call them.
+      responses:
+        "200":
+          description: Seven steps plus progress for this token or browser session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/demo/start:
+    post:
+      tags: [Demo]
+      summary: Start the guided demo at the voice step
+      responses:
+        "200":
+          description: Same body as GET /api/v1/demo with active true.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/demo/next:
+    post:
+      tags: [Demo]
+      summary: Advance one demo step
+      responses:
+        "200":
+          description: Next step, or done after the last one.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoResponse"
+        "400":
+          $ref: "#/components/responses/Validation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/demo/back:
+    post:
+      tags: [Demo]
+      summary: Move back one demo step
+      responses:
+        "200":
+          description: Previous step, not before the first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/v1/demo/stop:
+    post:
+      tags: [Demo]
+      summary: Clear demo progress
+      responses:
+        "200":
+          description: active false.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: token
+  parameters:
+    TxnId:
+      in: path
+      name: txn_id
+      required: true
+      schema:
+        type: integer
+  responses:
+    Unauthorized:
+      description: unauthorized or token_expired
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Forbidden:
+      description: Wrong role
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    NotFound:
+      description: Unknown id, sample, or path
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Validation:
+      description: Missing or unusable fields
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  schemas:
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - unauthorized
+            - token_expired
+            - forbidden
+            - not_found
+            - validation
+            - transcript_empty
+            - need_yes
+            - bad_pin
+            - insufficient
+            - not_pending
+            - method_not_allowed
+            - too_large
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    ErrorEnvelope:
+      type: object
+      required: [ok, synthetic, error]
+      properties:
+        ok:
+          type: boolean
+          enum: [false]
+        synthetic:
+          type: boolean
+          enum: [true]
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        role:
+          type: string
+          enum: [customer, staff]
+        display_name:
+          type: string
+        customer_id:
+          type: integer
+          nullable: true
+    Customer:
+      type: object
+      properties:
+        id:
+          type: integer
+        full_name:
+          type: string
+        short_name:
+          type: string
+        city:
+          type: string
+        language:
+          type: string
+        role:
+          type: string
+        phone_masked:
+          type: string
+        wallets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Wallet"
+    Wallet:
+      type: object
+      properties:
+        currency:
+          type: string
+          enum: [USD, ZIG]
+        balance_cents:
+          type: integer
+        pending_cents:
+          type: integer
+        available_cents:
+          type: integer
+        display_balance:
+          type: string
+        display_available:
+          type: string
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        reference:
+          type: string
+        kind:
+          type: string
+        category:
+          type: string
+        status:
+          type: string
+          enum: [pending, posted, cancelled]
+        amount_cents:
+          type: integer
+        currency:
+          type: string
+        display:
+          type: string
+        sender_id:
+          type: integer
+        recipient_id:
+          type: integer
+          nullable: true
+        merchant_id:
+          type: integer
+          nullable: true
+        counterparty:
+          type: string
+        note:
+          type: string
+        outgoing:
+          type: boolean
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        posted_at:
+          type: string
+          nullable: true
+        name:
+          type: string
+        initials:
+          type: string
+    Goal:
+      type: object
+      nullable: true
+      properties:
+        name:
+          type: string
+        currency:
+          type: string
+        saved_cents:
+          type: integer
+        target_cents:
+          type: integer
+        display_saved:
+          type: string
+        display_target:
+          type: string
+        due_date:
+          type: string
+        expected_cents:
+          type: integer
+        on_track:
+          type: boolean
+        remaining_days:
+          type: integer
+        weekly_cents:
+          type: integer
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+    LoginResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            token:
+              type: string
+            token_type:
+              type: string
+              enum: [Bearer]
+            expires_at:
+              type: string
+            user:
+              $ref: "#/components/schemas/User"
+    RevokeResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            revoked:
+              type: boolean
+    MeResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            user:
+              $ref: "#/components/schemas/User"
+            customer:
+              $ref: "#/components/schemas/Customer"
+    HealthResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            version:
+              type: string
+            ai_mode:
+              type: string
+              enum: [mock, caimex]
+            ai_label:
+              type: string
+            customers:
+              type: integer
+    WalletResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            customer:
+              $ref: "#/components/schemas/Customer"
+            wallets:
+              type: array
+              items:
+                $ref: "#/components/schemas/Wallet"
+            goal:
+              $ref: "#/components/schemas/Goal"
+            week:
+              type: object
+              properties:
+                total_cents:
+                  type: integer
+                display:
+                  type: string
+                delta_pct:
+                  type: integer
+                  nullable: true
+                days:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      label:
+                        type: string
+                      date:
+                        type: string
+                      amount_cents:
+                        type: integer
+                      display:
+                        type: string
+                      peak:
+                        type: boolean
+            pending_count:
+              type: integer
+    TransactionListResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            transactions:
+              type: array
+              items:
+                $ref: "#/components/schemas/Transaction"
+    ActivityResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            activity:
+              type: array
+              items:
+                $ref: "#/components/schemas/Transaction"
+    ContactListResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            contacts:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+                  city:
+                    type: string
+                  customer_id:
+                    type: integer
+                    nullable: true
+    MerchantListResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            merchants:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+                  category:
+                    type: string
+                  city:
+                    type: string
+    TransferCreate:
+      type: object
+      required: [amount_cents]
+      properties:
+        amount_cents:
+          type: integer
+        amount:
+          type: number
+          description: Decimal dollars. Ignored when amount_cents is set.
+        currency:
+          type: string
+          enum: [USD, ZIG]
+        kind:
+          type: string
+          enum: [transfer, airtime, merchant_pay, send_money, buy_airtime, pay_merchant]
+        recipient_name:
+          type: string
+        recipient_id:
+          type: integer
+        merchant_name:
+          type: string
+        merchant_id:
+          type: integer
+    TransferOutcomeResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            outcome:
+              type: string
+            message:
+              type: string
+            transaction:
+              $ref: "#/components/schemas/Transaction"
+    ConfirmRequest:
+      type: object
+      required: [confirm_word, pin]
+      properties:
+        confirm_word:
+          type: string
+          description: yes, hongu, yebo, ewe, or ehe
+        pin:
+          type: string
+          description: Four digits. Demo value 2580. Never send this field to any other route.
+    VoiceConfirmRequest:
+      allOf:
+        - $ref: "#/components/schemas/ConfirmRequest"
+        - type: object
+          required: [txn_id]
+          properties:
+            txn_id:
+              type: integer
+    ConfirmResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            outcome:
+              type: string
+              enum: [posted, already]
+            pin_checked_locally:
+              type: boolean
+            pin_sent_to_model:
+              type: boolean
+              enum: [false]
+            transaction:
+              $ref: "#/components/schemas/Transaction"
+    PhrasesResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            demo_pin:
+              type: string
+            yes_words:
+              type: array
+              items:
+                type: string
+            pin_rule:
+              type: string
+            phrases:
+              type: array
+              items:
+                type: object
+                properties:
+                  language:
+                    type: string
+                  label:
+                    type: string
+                  text:
+                    type: string
+                  hint:
+                    type: string
+    Plan:
+      type: object
+      properties:
+        intent:
+          type: string
+        amount_cents:
+          type: integer
+          nullable: true
+        currency:
+          type: string
+        language:
+          type: string
+        recipient_id:
+          type: integer
+          nullable: true
+        recipient_name:
+          type: string
+          nullable: true
+        merchant_id:
+          type: integer
+          nullable: true
+        missing:
+          type: array
+          items:
+            type: string
+        ambiguous:
+          type: array
+          items:
+            type: string
+        unknown_name:
+          type: string
+        locked:
+          type: boolean
+        confidence:
+          type: number
+        sentence:
+          type: string
+        source:
+          type: string
+        redacted:
+          type: boolean
+        provider_note:
+          type: string
+        transcript:
+          type: string
+        available_cents:
+          type: integer
+    InterpretText:
+      type: object
+      properties:
+        text:
+          type: string
+        language:
+          type: string
+    InterpretResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            transcript:
+              type: string
+            transcript_note:
+              type: string
+            balances:
+              type: array
+              items:
+                $ref: "#/components/schemas/Wallet"
+            plan:
+              $ref: "#/components/schemas/Plan"
+    PrepareRequest:
+      type: object
+      properties:
+        plan:
+          $ref: "#/components/schemas/Plan"
+        intent:
+          type: string
+        amount_cents:
+          type: integer
+        currency:
+          type: string
+        recipient_id:
+          type: integer
+        recipient_name:
+          type: string
+        merchant_id:
+          type: integer
+        missing:
+          type: array
+          items:
+            type: string
+    CoachResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            suggestions:
+              type: array
+              items:
+                type: string
+            warnings:
+              type: array
+              items:
+                type: string
+            categories:
+              type: array
+              items:
+                type: object
+                properties:
+                  key:
+                    type: string
+                  label:
+                    type: string
+                  amount_cents:
+                    type: integer
+                  display:
+                    type: string
+                  share:
+                    type: number
+            goal:
+              $ref: "#/components/schemas/Goal"
+            messages:
+              type: array
+              items:
+                $ref: "#/components/schemas/ChatMessage"
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        created_at:
+          type: string
+    CoachMessageResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            reply:
+              $ref: "#/components/schemas/ChatMessage"
+            note:
+              type: string
+            messages:
+              type: array
+              items:
+                $ref: "#/components/schemas/ChatMessage"
+    ScamSampleResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            samples:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  title:
+                    type: string
+                  text:
+                    type: string
+    ScamCheckResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            report:
+              type: object
+              properties:
+                verdict:
+                  type: string
+                  enum: [looks_safe, suspicious, likely_scam]
+                label:
+                  type: string
+                rules_verdict:
+                  type: string
+                rules_label:
+                  type: string
+                ai_verdict:
+                  type: string
+                  nullable: true
+                ai_confidence:
+                  type: number
+                  nullable: true
+                source:
+                  type: string
+                patterns:
+                  type: array
+                  items:
+                    type: object
+                steps:
+                  type: array
+                  items:
+                    type: string
+                note:
+                  type: string
+                error_detail:
+                  type: string
+    ReceiptEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        merchant_id:
+          type: integer
+        merchant:
+          type: string
+        vendor:
+          type: string
+        receipt_date:
+          type: string
+        total_cents:
+          type: integer
+        currency:
+          type: string
+        display:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              description:
+                type: string
+              amount_cents:
+                type: integer
+        notes:
+          type: string
+        source_name:
+          type: string
+        created_at:
+          type: string
+    ReceiptListResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            merchant:
+              type: object
+              nullable: true
+            entries:
+              type: array
+              items:
+                $ref: "#/components/schemas/ReceiptEntry"
+    ReceiptSave:
+      type: object
+      required: [vendor, total_cents]
+      properties:
+        vendor:
+          type: string
+        receipt_date:
+          type: string
+        date:
+          type: string
+        currency:
+          type: string
+          enum: [USD, ZIG]
+        total_cents:
+          type: integer
+        notes:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              description:
+                type: string
+              amount_cents:
+                type: integer
+              amount:
+                type: number
+    ReceiptSaveResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            entry:
+              $ref: "#/components/schemas/ReceiptEntry"
+    SampleListResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            samples:
+              type: array
+              items:
+                type: object
+    SampleFileResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            filename:
+              type: string
+            media_type:
+              type: string
+            base64:
+              type: string
+              description: Standard base64 of the PNG. The live value is the full file.
+    ExtractionResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            extraction:
+              type: object
+              properties:
+                vendor:
+                  type: string
+                date:
+                  type: string
+                currency:
+                  type: string
+                total_cents:
+                  type: integer
+                  nullable: true
+                display:
+                  type: string
+                  nullable: true
+                items:
+                  type: array
+                  items:
+                    type: object
+                note:
+                  type: string
+                source:
+                  type: string
+                  enum: [sample, caimex, manual]
+    CsvResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            filename:
+              type: string
+            media_type:
+              type: string
+            csv:
+              type: string
+    AccessibilitySettings:
+      type: object
+      properties:
+        large_type:
+          type: boolean
+        high_contrast:
+          type: boolean
+        speak_balances:
+          type: boolean
+    AccessibilityUpdate:
+      type: object
+      properties:
+        large_type:
+          type: boolean
+        high_contrast:
+          type: boolean
+        speak_balances:
+          type: boolean
+        settings:
+          $ref: "#/components/schemas/AccessibilitySettings"
+    AccessibilityUpdateResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            settings:
+              $ref: "#/components/schemas/AccessibilitySettings"
+    AccessibilityResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            settings:
+              $ref: "#/components/schemas/AccessibilitySettings"
+            spoken:
+              type: string
+            balances:
+              type: array
+              items:
+                $ref: "#/components/schemas/Wallet"
+            qr_samples:
+              type: array
+              items:
+                type: object
+                properties:
+                  filename:
+                    type: string
+                  title:
+                    type: string
+                  payload:
+                    type: string
+    Series:
+      type: object
+      properties:
+        daily:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+              total:
+                type: integer
+              negative:
+                type: integer
+        themes:
+          type: array
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+              count:
+                type: integer
+        regions:
+          type: array
+          items:
+            type: object
+            properties:
+              region:
+                type: string
+              negative:
+                type: integer
+              neutral:
+                type: integer
+              positive:
+                type: integer
+    PulseItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        source:
+          type: string
+        text:
+          type: string
+        theme:
+          type: string
+        theme_label:
+          type: string
+        sentiment:
+          type: string
+        region:
+          type: string
+        created_at:
+          type: string
+    PulseResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            points:
+              type: array
+              items:
+                type: string
+            complaints:
+              type: array
+              items:
+                type: object
+            series:
+              $ref: "#/components/schemas/Series"
+            feed:
+              type: array
+              items:
+                $ref: "#/components/schemas/PulseItem"
+    PulsePublishResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            item:
+              $ref: "#/components/schemas/PulseItem"
+            series:
+              $ref: "#/components/schemas/Series"
+    HighlightResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            points:
+              type: array
+              items:
+                type: string
+            prose:
+              type: string
+            note:
+              type: string
+    DocumentResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            fiction:
+              type: boolean
+            documents:
+              type: array
+              items:
+                type: object
+                properties:
+                  doc_id:
+                    type: string
+                  title:
+                    type: string
+                  body:
+                    type: string
+    AskResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            question:
+              type: string
+            answer:
+              type: string
+            note:
+              type: string
+            hits:
+              type: array
+              items:
+                type: object
+                properties:
+                  doc_id:
+                    type: string
+                  doc_title:
+                    type: string
+                  heading:
+                    type: string
+                  snippet:
+                    type: string
+    QuizResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            note:
+              type: string
+            questions:
+              type: array
+              items:
+                type: object
+                properties:
+                  question:
+                    type: string
+                  doc_id:
+                    type: string
+                  doc_title:
+                    type: string
+                  choices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        text:
+                          type: string
+    ScoreResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            score:
+              type: object
+              properties:
+                correct:
+                  type: integer
+                total:
+                  type: integer
+                review:
+                  type: array
+                  items:
+                    type: object
+    LedgerResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            customers:
+              type: array
+              items:
+                $ref: "#/components/schemas/Customer"
+            merchants:
+              type: array
+              items:
+                type: object
+            agents:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+                  city:
+                    type: string
+                  booth:
+                    type: string
+            transactions:
+              type: array
+              items:
+                $ref: "#/components/schemas/Transaction"
+            receipts:
+              type: array
+              items:
+                $ref: "#/components/schemas/ReceiptEntry"
+    AiLogResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            calls:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  created_at:
+                    type: string
+                  module:
+                    type: string
+                  operation:
+                    type: string
+                  provider:
+                    type: string
+                  model:
+                    type: string
+                  status:
+                    type: string
+                  prompt_chars:
+                    type: integer
+                  latency_ms:
+                    type: integer
+                  error:
+                    type: string
+    SearchResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            results:
+              type: array
+              items:
+                type: object
+                properties:
+                  label:
+                    type: string
+                  group:
+                    type: string
+                  hint:
+                    type: string
+                  api_path:
+                    type: string
+                    nullable: true
+    DemoStep:
+      type: object
+      properties:
+        number:
+          type: integer
+        slug:
+          type: string
+        role:
+          type: string
+          enum: [customer, staff]
+        kicker:
+          type: string
+        title:
+          type: string
+        narration:
+          type: string
+        action:
+          type: string
+        calls:
+          type: array
+          items:
+            type: string
+    DemoResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        synthetic:
+          type: boolean
+        data:
+          type: object
+          properties:
+            active:
+              type: boolean
+            done:
+              type: boolean
+            index:
+              type: integer
+              nullable: true
+            total:
+              type: integer
+            current:
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/DemoStep"
+            demo_pin:
+              type: string
+            yes_words:
+              type: array
+              items:
+                type: string
+            pin_rule:
+              type: string
+            steps:
+              type: array
+              items:
+                $ref: "#/components/schemas/DemoStep"
