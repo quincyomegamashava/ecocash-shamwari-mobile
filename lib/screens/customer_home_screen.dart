@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../core/layout.dart';
 import '../core/models/models.dart';
 import '../core/session/session.dart';
 import '../core/theme/shamwari_theme.dart';
@@ -40,27 +43,39 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
     try {
       final api = ref.read(shamwariApiProvider);
       final pace = ref.read(loadPaceProvider);
+      // First paint: wallet + activity only. Coach/receipts enrich afterward.
       final results = await Future.wait([
         api.wallet(),
         api.activity(),
-        api.coach(),
-        api.receipts(),
         Future<void>.delayed(pace),
       ]);
       if (!mounted) return;
       setState(() {
         _wallet = results[0] as WalletSnapshot;
         _activity = results[1] as List<Txn>;
-        _coach = results[2] as CoachState;
-        _slips = (results[3] as ReceiptBook).entries.length;
         _loading = false;
       });
+      unawaited(_loadExtras());
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _error = error;
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _loadExtras() async {
+    try {
+      final api = ref.read(shamwariApiProvider);
+      final results = await Future.wait([api.coach(), api.receipts()]);
+      if (!mounted) return;
+      setState(() {
+        _coach = results[0] as CoachState;
+        _slips = (results[1] as ReceiptBook).entries.length;
+      });
+    } catch (_) {
+      // Secondary panes are optional for the home shell.
     }
   }
 
@@ -92,196 +107,129 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
     final airtimeShare = (airtime == null || airtime.isEmpty)
         ? null
         : airtime.first;
-
     final delta = wallet.week.deltaPct;
     final goalName = wallet.goal?.name;
+    final expanded = context.isExpanded;
+    final sidePad = expanded ? 24.0 : 16.0;
+
+    final greeting = <Widget>[
+      Text(
+        'Mhoro, $first',
+        style: TextStyle(
+          color: context.inkMuted,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      Text(
+        hello,
+        style: TextStyle(
+          fontSize: expanded ? 30 : 26,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.5,
+          height: 1.15,
+        ),
+      ),
+    ];
+
+    final walletCard = _WalletCard(
+      selected: selected,
+      wallet: wallet,
+      currency: _currency,
+      onCurrencyChanged: (value) => setState(() => _currency = value),
+      delta: delta,
+      goalName: goalName,
+      airtimeShare: airtimeShare?.share,
+      onSend: () => context.go('/send'),
+      onTopUp: () => _gap(context, 'Top-up'),
+      onWithdraw: () => _gap(context, 'Withdraw'),
+    );
+
+    final services = _ServicesGrid(columns: expanded ? 3 : 2);
+
+    final activityPane = _ActivityPane(
+      slips: _slips,
+      activity: _activity,
+      coach: _coach,
+      onSeeAll: () => context.go('/activity'),
+      onCoach: () => context.go('/coach'),
+      onSafety: () => _safety(context),
+    );
+
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-        children: [
-          Text(
-            'Mhoro, $first',
-            style: TextStyle(
-              color: context.inkMuted,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          Text(
-            hello,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 14),
-          GlassCard(
-            navy: true,
-            radius: 28,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: expanded
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(sidePad, 8, sidePad, 28),
               children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'Your available balance',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xB3FFFFFF),
+                ...greeting,
+                const SizedBox(height: 18),
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        flex: 11,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            walletCard,
+                            const SizedBox(height: 22),
+                            const Text(
+                              'Services',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Quick tools in your wallet.',
+                              style: TextStyle(
+                                color: context.inkMuted,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            services,
+                          ],
                         ),
                       ),
-                    ),
-                    _CurrencyToggle(
-                      value: _currency,
-                      onChanged: (value) => setState(() => _currency = value),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${wallet.customer.city} · ${wallet.customer.role}',
-                  style: const TextStyle(
-                    color: Color(0xB3FFFFFF),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                      const SizedBox(width: ShamwariBreakpoints.homePaneGap),
+                      Expanded(flex: 9, child: activityPane),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 8),
-                Hero(
-                  tag: 'shamwari-balance',
-                  child: Material(
-                    type: MaterialType.transparency,
-                    child: MoneyHero(selected.displayAvailable),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    FadeSlideIn(
-                      child: _DeltaChip(
-                        delta == null ? 'No prior week' : '+$delta% this week',
-                        positive: delta == null || delta >= 0,
-                      ),
-                    ),
-                    if (goalName != null)
-                      FadeSlideIn(
-                        index: 1,
-                        child: _DeltaChip(goalName, positive: true),
-                      ),
-                    if (airtimeShare != null)
-                      FadeSlideIn(
-                        index: 2,
-                        child: _DeltaChip(
-                          'Airtime ${(airtimeShare.share * 100).round()}%',
-                          positive: true,
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    _QuickAction(
-                      icon: Icons.arrow_upward_rounded,
-                      label: 'Send',
-                      onTap: () => context.go('/send'),
-                    ),
-                    const SizedBox(width: 8),
-                    _QuickAction(
-                      icon: Icons.add_rounded,
-                      label: 'Top up',
-                      onTap: () => _gap(context, 'Top-up'),
-                    ),
-                    const SizedBox(width: 8),
-                    _QuickAction(
-                      icon: Icons.arrow_downward_rounded,
-                      label: 'Withdraw',
-                      onTap: () => _gap(context, 'Withdraw'),
-                    ),
-                  ],
                 ),
               ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Also in the wallet',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final entry in [
-                ('/voice', 'Voice notes', Icons.mic_rounded),
-                ('/chat', 'Chat', Icons.chat_bubble_outline_rounded),
-                ('/ussd', 'USSD', Icons.dialpad_rounded),
-                ('/coach', 'Coach', Icons.auto_awesome_rounded),
-                ('/scam', 'Scam check', Icons.shield_rounded),
-              ])
-                FadeSlideIn(
-                  child: ActionChip(
-                    avatar: Icon(entry.$3, size: 16),
-                    label: Text(entry.$2),
-                    onPressed: () => context.go(entry.$1),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _slips == 0
-                      ? 'Recent activity'
-                      : 'Recent activity · $_slips slips',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                ),
-              ),
-              TextButton(
-                onPressed: () => context.go('/activity'),
-                child: const Text('See all'),
-              ),
-            ],
-          ),
-          if (_activity.isEmpty)
-            const EmptyPane(
-              title: 'No rows yet',
-              body: 'A confirmed payment will land here.',
             )
-          else
-            for (final item in _activity.take(4)) _ActivityTile(txn: item),
-          if (_coach != null && _coach!.warnings.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            GlassCard(
-              onTap: () => context.go('/coach'),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Coach insight',
-                    style: TextStyle(fontWeight: FontWeight.w800),
+          : ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(sidePad, 8, sidePad, 28),
+              children: [
+                ...greeting,
+                const SizedBox(height: 18),
+                walletCard,
+                const SizedBox(height: 22),
+                const Text(
+                  'Services',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Quick tools in your wallet.',
+                  style: TextStyle(
+                    color: context.inkMuted,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
                   ),
-                  const SizedBox(height: 6),
-                  Text(_coach!.warnings.first),
-                ],
-              ),
+                ),
+                const SizedBox(height: 12),
+                services,
+                const SizedBox(height: 22),
+                activityPane,
+              ],
             ),
-          ],
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              onPressed: () => _safety(context),
-              child: const Text('PIN and safety'),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -304,6 +252,306 @@ class _CustomerHomeScreenState extends ConsumerState<CustomerHomeScreen> {
         content: Text(
           '$name is a booth action in this prototype. The mobile book can send, pay a merchant, or buy airtime.',
         ),
+      ),
+    );
+  }
+}
+
+class _WalletCard extends StatelessWidget {
+  const _WalletCard({
+    required this.selected,
+    required this.wallet,
+    required this.currency,
+    required this.onCurrencyChanged,
+    required this.delta,
+    required this.goalName,
+    required this.airtimeShare,
+    required this.onSend,
+    required this.onTopUp,
+    required this.onWithdraw,
+  });
+
+  final Wallet selected;
+  final WalletSnapshot wallet;
+  final String currency;
+  final ValueChanged<String> onCurrencyChanged;
+  final num? delta;
+  final String? goalName;
+  final double? airtimeShare;
+  final VoidCallback onSend;
+  final VoidCallback onTopUp;
+  final VoidCallback onWithdraw;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      navy: true,
+      radius: 32,
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 26,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.white.withValues(alpha: 0.55),
+                      Colors.white.withValues(alpha: 0.2),
+                    ],
+                  ),
+                ),
+              ),
+              const Spacer(),
+              _CurrencyToggle(value: currency, onChanged: onCurrencyChanged),
+            ],
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            'Available balance',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Color(0xB3FFFFFF),
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Hero(
+            tag: 'shamwari-balance',
+            child: Material(
+              type: MaterialType.transparency,
+              child: MoneyHero(selected.displayAvailable),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${wallet.customer.city} · ${wallet.customer.role}',
+            style: const TextStyle(
+              color: Color(0xB3FFFFFF),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FadeSlideIn(
+                child: _DeltaChip(
+                  delta == null ? 'No prior week' : '+$delta% this week',
+                  positive: delta == null || delta! >= 0,
+                ),
+              ),
+              if (goalName != null)
+                FadeSlideIn(
+                  index: 1,
+                  child: _DeltaChip(goalName!, positive: true),
+                ),
+              if (airtimeShare != null)
+                FadeSlideIn(
+                  index: 2,
+                  child: _DeltaChip(
+                    'Airtime ${(airtimeShare! * 100).round()}%',
+                    positive: true,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              _QuickAction(
+                icon: Icons.arrow_upward_rounded,
+                label: 'Send',
+                onTap: onSend,
+              ),
+              const SizedBox(width: 8),
+              _QuickAction(
+                icon: Icons.add_rounded,
+                label: 'Top up',
+                onTap: onTopUp,
+              ),
+              const SizedBox(width: 8),
+              _QuickAction(
+                icon: Icons.arrow_downward_rounded,
+                label: 'Withdraw',
+                onTap: onWithdraw,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServicesGrid extends StatelessWidget {
+  const _ServicesGrid({required this.columns});
+
+  final int columns;
+
+  static const _services = [
+    ('/voice', 'Voice notes', 'Speak a payment', Icons.mic_rounded),
+    ('/chat', 'Chat', 'Ask Shamwari', Icons.chat_bubble_outline_rounded),
+    ('/ussd', 'USSD', 'Classic codes', Icons.dialpad_rounded),
+    ('/coach', 'Coach', 'Spend smarter', Icons.auto_awesome_rounded),
+    ('/scam', 'Scam check', 'Stay protected', Icons.shield_rounded),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final gaps = 10.0 * (columns - 1);
+        final tileWidth = (constraints.maxWidth - gaps) / columns;
+        return Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (var i = 0; i < _services.length; i++)
+              SizedBox(
+                width: tileWidth,
+                child: FadeSlideIn(
+                  index: i,
+                  child: _ServiceCard(
+                    title: _services[i].$2,
+                    body: _services[i].$3,
+                    icon: _services[i].$4,
+                    onTap: () => context.go(_services[i].$1),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ActivityPane extends StatelessWidget {
+  const _ActivityPane({
+    required this.slips,
+    required this.activity,
+    required this.coach,
+    required this.onSeeAll,
+    required this.onCoach,
+    required this.onSafety,
+  });
+
+  final int slips;
+  final List<Txn> activity;
+  final CoachState? coach;
+  final VoidCallback onSeeAll;
+  final VoidCallback onCoach;
+  final VoidCallback onSafety;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                slips == 0 ? 'Recent activity' : 'Recent activity · $slips slips',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            TextButton(onPressed: onSeeAll, child: const Text('See all')),
+          ],
+        ),
+        if (activity.isEmpty)
+          const EmptyPane(
+            title: 'No rows yet',
+            body: 'A confirmed payment will land here.',
+          )
+        else
+          for (final item in activity.take(6)) _ActivityTile(txn: item),
+        if (coach != null && coach!.warnings.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          GlassCard(
+            radius: 24,
+            onTap: onCoach,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Coach insight',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 6),
+                Text(coach!.warnings.first),
+              ],
+            ),
+          ),
+        ],
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: onSafety,
+            child: const Text('PIN and safety'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ServiceCard extends StatelessWidget {
+  const _ServiceCard({
+    required this.title,
+    required this.body,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String title;
+  final String body;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return GlassCard(
+      radius: 24,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: palette.forest.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: palette.forest, size: 20),
+          ),
+          const SizedBox(height: 12),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 2),
+          Text(
+            body,
+            style: TextStyle(
+              color: palette.onCardMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -376,7 +624,11 @@ class _DeltaChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 12),
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+        ),
       ),
     );
   }
@@ -431,21 +683,22 @@ class _ActivityTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     final outgoing = txn.outgoing ?? true;
-    final amountColor = outgoing ? const Color(0xFFFDA4AF) : const Color(0xFF6EE7B7);
+    final amountColor = outgoing ? palette.danger : palette.ok;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: GlassCard(
-        navy: true,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        radius: 22,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         child: Row(
           children: [
             CircleAvatar(
-              backgroundColor: Colors.white.withValues(alpha: 0.16),
+              backgroundColor: palette.forest.withValues(alpha: 0.1),
               child: Text(
                 txn.initials ?? '•',
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: palette.forest,
                   fontWeight: FontWeight.w800,
                   fontSize: 12,
                 ),
@@ -463,7 +716,7 @@ class _ActivityTile extends StatelessWidget {
                   Text(
                     _when(txn.createdAt),
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.65),
+                      color: palette.onCardMuted,
                       fontSize: 12,
                     ),
                   ),

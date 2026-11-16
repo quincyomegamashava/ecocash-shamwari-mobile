@@ -1,9 +1,6 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
-/// Widget-test captures deadlock on blur layers. The running app leaves this
-/// true so glass and the backdrop glow stay soft.
+/// Soft card shadows only. Live backdrop blur was removed for scroll performance.
 bool shamwariAllowBlur = true;
 
 @immutable
@@ -75,10 +72,11 @@ class ShamwariPalette extends ThemeExtension<ShamwariPalette> {
     onAccent: Colors.white,
   );
 
-  /// Default. Soft sky field, light glass cards, deep navy type and heroes.
+  /// Default. Soft EcoCash sky atmosphere, bright white cards, deep navy heroes.
+  /// Layout language follows the Rillo-style soft field + rounded card system.
   static const light = ShamwariPalette(
-    bg: Color(0xFF8EBFEE),
-    bgElevated: Color(0xFFD7EBFA),
+    bg: Color(0xFFB7D6F3),
+    bgElevated: Color(0xFFF4F8FD),
     card: Color(0xFFFFFFFF),
     text: Color(0xFF0B1E3F),
     muted: Color(0xFF2C4A73),
@@ -89,7 +87,7 @@ class ShamwariPalette extends ThemeExtension<ShamwariPalette> {
     onCard: Color(0xFF0E2A56),
     onCardMuted: Color(0xFF4A6490),
     lightGlass: true,
-    border: Color(0xCCFFFFFF),
+    border: Color(0xE6FFFFFF),
     danger: Color(0xFFE11D48),
     ok: Color(0xFF059669),
     warning: Color(0xFFD97706),
@@ -312,13 +310,15 @@ ThemeData shamwariTheme(ShamwariPalette palette) {
             : palette.lightGlass
             ? Colors.white
             : const Color(0xFF0C2420),
-        minimumSize: const Size(0, 48),
+        minimumSize: const Size(0, 52),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+        elevation: palette.lightGlass ? 0 : 2,
         textStyle: const TextStyle(
           fontWeight: FontWeight.w800,
           fontSize: 15,
           fontFamily: 'Plus Jakarta Sans',
         ),
-        shape: const StadiumBorder(),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -429,11 +429,17 @@ class ShamwariBackdrop extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
           colors: sky
-              ? const [Color(0xFFD7EBFA), Color(0xFF8EBFEE), Color(0xFF6AA6E4)]
+              ? const [
+                  Color(0xFFF7FAFE),
+                  Color(0xFFD7EBFA),
+                  Color(0xFF9EC6EB),
+                  Color(0xFF7EB0E2),
+                ]
               : [palette.bg, palette.bgElevated, palette.bg],
+          stops: sky ? const [0.0, 0.28, 0.72, 1.0] : null,
         ),
       ),
       child: Stack(
@@ -445,24 +451,24 @@ class ShamwariBackdrop extends StatelessWidget {
                 child: CustomPaint(
                   painter: _WavePainter(
                     color: sky ? Colors.white : const Color(0xFF7EB6FF),
-                    alpha: sky ? 0.28 : 0.08,
+                    alpha: sky ? 0.22 : 0.08,
                   ),
                 ),
               ),
             ),
           if (palette.glass) ...[
             const Positioned(
-              top: -120,
-              right: -30,
-              child: _Glow(color: Color(0xFFFFFFFF), size: 280, alpha: 0.35),
+              top: -140,
+              right: -40,
+              child: _Glow(color: Color(0xFFFFFFFF), size: 320, alpha: 0.42),
             ),
             Positioned(
-              bottom: 40,
-              left: -80,
+              bottom: 20,
+              left: -90,
               child: _Glow(
                 color: sky ? const Color(0xFF5B93D6) : const Color(0xFF16325C),
-                size: 240,
-                alpha: 0.22,
+                size: 260,
+                alpha: 0.18,
               ),
             ),
           ],
@@ -515,21 +521,21 @@ class _Glow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final orb = Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color.withValues(alpha: alpha),
-      ),
-    );
+    // Soft radial fill instead of ImageFiltered blur — same atmosphere, less GPU.
     return IgnorePointer(
-      child: shamwariAllowBlur
-          ? ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-              child: orb,
-            )
-          : orb,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [
+              color.withValues(alpha: alpha),
+              color.withValues(alpha: 0),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/demo/demo_controller.dart';
+import '../core/layout.dart';
 import '../core/session/session.dart';
 import '../core/theme/shamwari_theme.dart';
 import 'mark.dart';
@@ -27,6 +28,104 @@ class AppShell extends ConsumerWidget {
     final tabs = auth.isStaff ? _staffTabs : _customerTabs;
     final index = _indexFor(auth.isStaff, location);
     final showBack = _parentOf(auth.isStaff, location) != null;
+    final useRail = context.isMediumOrUp;
+
+    final header = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 12, 4),
+      child: Row(
+        children: [
+          if (showBack)
+            GlassIconButton(
+              tooltip: 'Back',
+              icon: Icons.arrow_back_rounded,
+              onPressed: () => context.go(_parentOf(auth.isStaff, location)!),
+            )
+          else
+            const ShamwariMark(size: 34),
+          const SizedBox(width: 10),
+          Text(
+            'Shamwari',
+            style: TextStyle(
+              fontSize: useRail ? 24 : 22,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.6,
+              color: context.ink,
+            ),
+          ),
+          const Spacer(),
+          GlassIconButton(
+            tooltip: 'Notices',
+            icon: Icons.notifications_none_rounded,
+            onPressed: () =>
+                context.go(auth.isStaff ? '/audit' : '/activity'),
+          ),
+          const SizedBox(width: 8),
+          Builder(
+            builder: (context) => GlassIconButton(
+              tooltip: 'Menu',
+              icon: Icons.menu_rounded,
+              onPressed: () => Scaffold.of(context).openEndDrawer(),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    final destinations = [
+      for (final tab in tabs)
+        NavDestination(
+          path: tab.path,
+          label: tab.label,
+          icon: tab.icon,
+          selected: tab.selected,
+        ),
+    ];
+
+    Widget body;
+    if (useRail) {
+      body = Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 4, 12),
+            child: ShamwariRail(
+              destinations: destinations,
+              selectedIndex: index,
+              onSelected: (next) => context.go(tabs[next].path),
+            ),
+          ),
+          Expanded(
+            child: Column(
+              children: [
+                header,
+                Expanded(child: ClipRect(child: child)),
+                if (demo.active && demo.script?.current != null)
+                  const _DemoBar(),
+              ],
+            ),
+          ),
+        ],
+      );
+    } else {
+      body = Column(
+        children: [
+          header,
+          Expanded(child: ClipRect(child: child)),
+          if (demo.active && demo.script?.current != null) const _DemoBar(),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: ShamwariNav(
+                destinations: destinations,
+                selectedIndex: index,
+                onSelected: (next) => context.go(tabs[next].path),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlay.copyWith(statusBarColor: Colors.transparent),
@@ -34,77 +133,7 @@ class AppShell extends ConsumerWidget {
         child: Scaffold(
           backgroundColor: Colors.transparent,
           endDrawer: _ShamwariDrawer(location: location),
-          body: SafeArea(
-            bottom: false,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 12, 0),
-                  child: Row(
-                    children: [
-                      if (showBack)
-                        GlassIconButton(
-                          tooltip: 'Back',
-                          icon: Icons.arrow_back_rounded,
-                          onPressed: () =>
-                              context.go(_parentOf(auth.isStaff, location)!),
-                        )
-                      else
-                        const ShamwariMark(size: 32),
-                      const SizedBox(width: 10),
-                      Text(
-                        'Shamwari',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.4,
-                          color: context.ink,
-                        ),
-                      ),
-                      const Spacer(),
-                      GlassIconButton(
-                        tooltip: 'Notices',
-                        icon: Icons.notifications_none_rounded,
-                        onPressed: () => context.go(
-                          auth.isStaff ? '/audit' : '/activity',
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Builder(
-                        builder: (context) => GlassIconButton(
-                          tooltip: 'Menu',
-                          icon: Icons.menu_rounded,
-                          onPressed: () => Scaffold.of(context).openEndDrawer(),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(child: ClipRect(child: child)),
-                if (demo.active && demo.script?.current != null)
-                  const _DemoBar(),
-                SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                    child: ShamwariNav(
-                      destinations: [
-                        for (final tab in tabs)
-                          NavDestination(
-                            path: tab.path,
-                            label: tab.label,
-                            icon: tab.icon,
-                            selected: tab.selected,
-                          ),
-                      ],
-                      selectedIndex: index,
-                      onSelected: (next) => context.go(tabs[next].path),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          body: SafeArea(bottom: !useRail, child: body),
         ),
       ),
     );
@@ -172,10 +201,25 @@ class _Tab {
 
 const _customerTabs = [
   _Tab('/home', 'Home', Icons.home_outlined, Icons.home_rounded),
-  _Tab('/send', 'Pay', Icons.qr_code_scanner_rounded, Icons.qr_code_scanner_rounded),
-  _Tab('/insights', 'Insights', Icons.donut_large_outlined, Icons.donut_large_rounded),
+  _Tab(
+    '/send',
+    'Pay',
+    Icons.qr_code_scanner_rounded,
+    Icons.qr_code_scanner_rounded,
+  ),
+  _Tab(
+    '/insights',
+    'Insights',
+    Icons.donut_large_outlined,
+    Icons.donut_large_rounded,
+  ),
   _Tab('/activity', 'History', Icons.history_rounded, Icons.history_rounded),
-  _Tab('/profile', 'Account', Icons.person_outline_rounded, Icons.person_rounded),
+  _Tab(
+    '/profile',
+    'Account',
+    Icons.person_outline_rounded,
+    Icons.person_rounded,
+  ),
 ];
 
 const _staffTabs = [
@@ -183,7 +227,12 @@ const _staffTabs = [
   _Tab('/queue', 'Queue', Icons.inbox_outlined, Icons.inbox_rounded),
   _Tab('/copilot', 'Copilot', Icons.forum_outlined, Icons.forum_rounded),
   _Tab('/impact', 'Impact', Icons.bolt_outlined, Icons.bolt_rounded),
-  _Tab('/profile', 'Account', Icons.person_outline_rounded, Icons.person_rounded),
+  _Tab(
+    '/profile',
+    'Account',
+    Icons.person_outline_rounded,
+    Icons.person_rounded,
+  ),
 ];
 
 class _ShamwariDrawer extends ConsumerWidget {

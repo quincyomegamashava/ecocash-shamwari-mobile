@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../core/theme/shamwari_theme.dart';
@@ -29,16 +27,21 @@ class GlassCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final radiusValue = BorderRadius.circular(radius);
+    // Opaque panels (no live backdrop blur) — cheaper scroll/paint on tablets.
     final top = palette.highContrast
         ? palette.card
         : navy
         ? const Color(0xFF1A3E78)
-        : Colors.white.withValues(alpha: palette.lightGlass ? 0.72 : 0.16);
+        : palette.lightGlass
+        ? Colors.white
+        : Colors.white.withValues(alpha: 0.16);
     final bottom = palette.highContrast
         ? palette.card
         : navy
         ? const Color(0xFF0E2A56)
-        : Colors.white.withValues(alpha: palette.lightGlass ? 0.46 : 0.08);
+        : palette.lightGlass
+        ? const Color(0xFFF7FAFE)
+        : Colors.white.withValues(alpha: 0.08);
     final decorated = DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: radiusValue,
@@ -53,15 +56,15 @@ class GlassCard extends StatelessWidget {
         border: Border.all(
           color: palette.highContrast
               ? palette.border
-              : Colors.white.withValues(alpha: palette.lightGlass ? 0.78 : 0.28),
+              : Colors.white.withValues(alpha: palette.lightGlass ? 0.95 : 0.28),
           width: palette.highContrast ? 2 : 1,
         ),
-        boxShadow: palette.glass && shamwariAllowBlur && !palette.highContrast
+        boxShadow: palette.glass && !palette.highContrast
             ? [
                 BoxShadow(
-                  color: const Color(0xFF0E2A56).withValues(alpha: 0.12),
-                  blurRadius: 24,
-                  offset: const Offset(0, 12),
+                  color: const Color(0xFF0E2A56).withValues(alpha: 0.08),
+                  blurRadius: shamwariAllowBlur ? 16 : 8,
+                  offset: const Offset(0, 6),
                 ),
               ]
             : null,
@@ -90,12 +93,7 @@ class GlassCard extends StatelessWidget {
     );
     final clipped = ClipRRect(
       borderRadius: radiusValue,
-      child: palette.glass && shamwariAllowBlur
-          ? BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-              child: decorated,
-            )
-          : decorated,
+      child: decorated,
     );
     if (onTap == null) return clipped;
     return Pressable(onTap: onTap, child: clipped);

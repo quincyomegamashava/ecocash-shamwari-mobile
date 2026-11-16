@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api/api_exception.dart';
 import '../core/demo/demo_controller.dart';
+import '../core/layout.dart';
 import '../core/session/session.dart';
 import '../core/session/stores.dart';
 import '../core/theme/shamwari_theme.dart';
@@ -195,83 +196,122 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         body: SafeArea(
           child: Stack(
             children: [
-              ListView(
-                padding: const EdgeInsets.fromLTRB(24, 72, 24, 28),
-                children: [
-                  const Center(child: ShamwariMark(size: 56)),
-                  const SizedBox(height: 14),
-                  Text(
-                    'Shamwari',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+              ConstrainedContent(
+                maxWidth: 480,
+                child: ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    context.isCompact ? 20 : 28,
+                    context.isCompact ? 56 : 72,
+                    context.isCompact ? 20 : 28,
+                    28,
                   ),
-                  const SizedBox(height: 6),
+                  children: [
+                    const Center(child: ShamwariMark(size: 64)),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Shamwari',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineMedium
+                          ?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.6,
+                          ),
+                    ),
+                  const SizedBox(height: 8),
                   Text(
                     'The wallet that waits for yes.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: context.inkMuted,
                       fontWeight: FontWeight.w600,
+                      height: 1.35,
                     ),
                   ),
                   const SizedBox(height: 28),
-                  TextField(
-                    key: const Key('username'),
-                    controller: _username,
-                    textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(
-                      labelText: 'Username',
-                      hintText: 'Username',
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    key: const Key('password'),
-                    controller: _password,
-                    obscureText: _obscure,
-                    onSubmitted: (_) => _busy ? null : _signIn(),
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      hintText: 'Password',
-                      suffixIcon: IconButton(
-                        onPressed: () => setState(() => _obscure = !_obscure),
-                        icon: Icon(
-                          _obscure
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
+                  GlassCard(
+                    radius: 32,
+                    padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Welcome back',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: palette.onCard,
+                          ),
                         ),
-                      ),
-                    ),
-                  ),
-                  if (_error != null) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      _error!,
-                      style: TextStyle(
-                        color: palette.danger,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      key: const Key('sign-in'),
-                      onPressed: _busy ? null : () => _signIn(),
-                      child: Text(_busy ? 'Signing in…' : 'Sign in'),
-                    ),
-                  ),
-                  Center(
-                    child: TextButton(
-                      key: const Key('demo-accounts'),
-                      onPressed: () => setState(() => _demos = !_demos),
-                      child: const Text('Demo accounts'),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Sign in to your EcoCash wallet.',
+                          style: TextStyle(
+                            color: palette.onCardMuted,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        TextField(
+                          key: const Key('username'),
+                          controller: _username,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            labelText: 'Username',
+                            hintText: 'Username',
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          key: const Key('password'),
+                          controller: _password,
+                          obscureText: _obscure,
+                          onSubmitted: (_) => _busy ? null : _signIn(),
+                          decoration: InputDecoration(
+                            labelText: 'Password',
+                            hintText: 'Password',
+                            suffixIcon: IconButton(
+                              onPressed: () =>
+                                  setState(() => _obscure = !_obscure),
+                              icon: Icon(
+                                _obscure
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (_error != null) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            _error!,
+                            style: TextStyle(
+                              color: palette.danger,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            key: const Key('sign-in'),
+                            onPressed: _busy ? null : () => _signIn(),
+                            child: Text(_busy ? 'Signing in…' : 'Sign in'),
+                          ),
+                        ),
+                        Center(
+                          child: TextButton(
+                            key: const Key('demo-accounts'),
+                            onPressed: () => setState(() => _demos = !_demos),
+                            child: const Text('Demo accounts'),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   if (_demos) ...[
+                    const SizedBox(height: 16),
                     const Text(
                       'Choose a demo desk.',
                       style: TextStyle(fontWeight: FontWeight.w800),
@@ -307,6 +347,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ],
                 ],
               ),
+            ),
               Positioned(
                 top: 8,
                 right: 12,

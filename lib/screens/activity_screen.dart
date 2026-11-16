@@ -59,24 +59,35 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     if (_error != null) return ErrorPane(error: _error!, onRetry: _load);
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(
+      child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
-        children: [
-          const SectionLabel('Money'),
-          Text('History', style: Theme.of(context).textTheme.headlineMedium),
-          Text(
-            'Newest first. Pending holds are not posted yet.',
-            style: TextStyle(color: context.inkMuted),
-          ),
-          const SizedBox(height: 12),
-          if (_rows.isEmpty)
-            const EmptyPane(
-              title: 'No transactions',
-              body: 'Send money and confirm it to see a row.',
-            ),
-          for (final txn in _rows) _HistoryCard(txn: txn),
-        ],
+        itemCount: _rows.isEmpty ? 1 : _rows.length + 1,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SectionLabel('Money'),
+                Text(
+                  'History',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                Text(
+                  'Newest first. Pending holds are not posted yet.',
+                  style: TextStyle(color: context.inkMuted),
+                ),
+                const SizedBox(height: 12),
+                if (_rows.isEmpty)
+                  const EmptyPane(
+                    title: 'No transactions',
+                    body: 'Send money and confirm it to see a row.',
+                  ),
+              ],
+            );
+          }
+          return _HistoryCard(txn: _rows[index - 1]);
+        },
       ),
     );
   }

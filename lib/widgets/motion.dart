@@ -333,15 +333,13 @@ class FadeSlideIn extends StatelessWidget {
     if (reduceMotion(context)) return child;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
-      duration: Duration(milliseconds: 280 + index * 50),
+      duration: Duration(milliseconds: 220 + index * 40),
       curve: Curves.easeOutCubic,
       builder: (context, value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, (1 - value) * 10),
-            child: child,
-          ),
+        // Translate only — Opacity forces a saveLayer every frame.
+        return Transform.translate(
+          offset: Offset(0, (1 - value) * 8),
+          child: child,
         );
       },
       child: child,
