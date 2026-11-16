@@ -396,10 +396,10 @@ class _ServicesGrid extends StatelessWidget {
   final int columns;
 
   static const _services = [
+    ('/chat', 'AI', 'Ask Shamwari', Icons.auto_awesome_rounded),
     ('/voice', 'Voice notes', 'Speak a payment', Icons.mic_rounded),
-    ('/chat', 'Chat', 'Ask Shamwari', Icons.chat_bubble_outline_rounded),
     ('/ussd', 'USSD', 'Classic codes', Icons.dialpad_rounded),
-    ('/coach', 'Coach', 'Spend smarter', Icons.auto_awesome_rounded),
+    ('/coach', 'Coach', 'Spend smarter', Icons.school_rounded),
     ('/scam', 'Scam check', 'Stay protected', Icons.shield_rounded),
   ];
 

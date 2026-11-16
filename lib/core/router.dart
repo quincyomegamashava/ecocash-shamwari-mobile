@@ -76,7 +76,7 @@ String routeForSlug(String slug) {
     case 'onboarding':
       return '/onboarding';
     default:
-      return '/home';
+      return '/chat';
   }
 }
 
@@ -127,7 +127,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (!auth.ready) return loc == '/boot' ? null : '/boot';
       if (!auth.signedIn) return loc == '/login' ? null : '/login';
       if (loc == '/boot' || loc == '/login') {
-        return auth.landing ?? (auth.isStaff ? '/pulse' : '/home');
+        return auth.landing ?? (auth.isStaff ? '/pulse' : '/chat');
       }
       if (auth.isStaff && isCustomerPath(loc)) return '/forbidden';
       if (!auth.isStaff && isStaffPath(loc)) return '/forbidden';

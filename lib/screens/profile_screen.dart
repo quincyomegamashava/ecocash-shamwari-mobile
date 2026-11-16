@@ -55,7 +55,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
       children: [
         const Text(
-          'Profile',
+          'Account',
           style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 12),
@@ -123,31 +123,48 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 18),
-        const Text(
-          'Account settings',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 8),
         if (auth.isCustomer) ...[
+          const SizedBox(height: 18),
+          const _SectionLabel('Money'),
+          const SizedBox(height: 8),
+          SettingsPill(
+            icon: Icons.account_balance_wallet_outlined,
+            title: 'Wallet home',
+            subtitle: 'Balance, coach and recent activity',
+            onTap: () => context.go('/home'),
+          ),
+          SettingsPill(
+            icon: Icons.history_rounded,
+            title: 'History',
+            onTap: () => context.go('/activity'),
+          ),
+          SettingsPill(
+            icon: Icons.donut_large_rounded,
+            title: 'Insights',
+            onTap: () => context.go('/insights'),
+          ),
+          SettingsPill(
+            icon: Icons.receipt_long_rounded,
+            title: 'Scan a slip',
+            onTap: () => context.go('/receipts'),
+          ),
+          const SizedBox(height: 18),
+          const _SectionLabel('Ask Shamwari'),
+          const SizedBox(height: 8),
+          SettingsPill(
+            icon: Icons.auto_awesome_rounded,
+            title: 'Open AI',
+            subtitle: 'Chat, voice and money help',
+            onTap: () => context.go('/chat'),
+          ),
           SettingsPill(
             icon: Icons.mic_rounded,
-            title: 'Voice notes',
+            title: 'Voice pay',
             subtitle: 'Shona, Ndebele and English',
             onTap: () => context.go('/voice'),
           ),
           SettingsPill(
-            icon: Icons.chat_bubble_outline_rounded,
-            title: 'Chat channel',
-            onTap: () => context.go('/chat'),
-          ),
-          SettingsPill(
-            icon: Icons.dialpad_rounded,
-            title: 'USSD *151#',
-            onTap: () => context.go('/ussd'),
-          ),
-          SettingsPill(
-            icon: Icons.auto_awesome_rounded,
+            icon: Icons.school_rounded,
             title: 'Financial coach',
             onTap: () => context.go('/coach'),
           ),
@@ -157,18 +174,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             onTap: () => context.go('/scam'),
           ),
           SettingsPill(
-            icon: Icons.receipt_long_rounded,
-            title: 'Scan a slip',
-            onTap: () => context.go('/receipts'),
+            icon: Icons.dialpad_rounded,
+            title: 'USSD *151#',
+            onTap: () => context.go('/ussd'),
           ),
+          const SizedBox(height: 18),
+          const _SectionLabel('Access'),
+          const SizedBox(height: 8),
           SettingsPill(
             icon: Icons.accessibility_new_rounded,
             title: 'Accessibility',
             subtitle: 'Type, contrast, spoken balances',
             onTap: () => context.go('/accessibility'),
           ),
+          SettingsPill(
+            icon: Icons.search_rounded,
+            title: 'Search',
+            onTap: () => context.go('/search'),
+          ),
         ],
         if (auth.isStaff) ...[
+          const SizedBox(height: 18),
+          const _SectionLabel('Care tools'),
+          const SizedBox(height: 8),
           SettingsPill(
             icon: Icons.fact_check_rounded,
             title: 'Audit log',
@@ -189,22 +217,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             title: 'AI log',
             onTap: () => context.go('/ai-log'),
           ),
+          SettingsPill(
+            icon: Icons.insights_rounded,
+            title: 'Customer pulse',
+            onTap: () => context.go('/pulse'),
+          ),
+          SettingsPill(
+            icon: Icons.search_rounded,
+            title: 'Search',
+            onTap: () => context.go('/search'),
+          ),
         ],
-        SettingsPill(
-          icon: auth.isStaff ? Icons.insights_rounded : Icons.history_rounded,
-          title: auth.isStaff ? 'Customer pulse' : 'Activity',
-          onTap: () => context.go(auth.isStaff ? '/pulse' : '/activity'),
-        ),
-        SettingsPill(
-          icon: Icons.search_rounded,
-          title: 'Search',
-          onTap: () => context.go('/search'),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Preferences',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-        ),
+        const SizedBox(height: 18),
+        const _SectionLabel('Preferences'),
         const SizedBox(height: 8),
         SettingsPill(
           icon: Icons.dark_mode_outlined,
@@ -228,6 +253,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
     );
   }
 }

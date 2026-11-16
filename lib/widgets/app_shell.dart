@@ -29,6 +29,7 @@ class AppShell extends ConsumerWidget {
     final index = _indexFor(auth.isStaff, location);
     final showBack = _parentOf(auth.isStaff, location) != null;
     final useRail = context.isMediumOrUp;
+    final aiHome = !auth.isStaff && location == '/chat';
 
     final header = Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 12, 4),
@@ -44,7 +45,7 @@ class AppShell extends ConsumerWidget {
             const ShamwariMark(size: 34),
           const SizedBox(width: 10),
           Text(
-            'Shamwari',
+            auth.isStaff ? 'Shamwari' : 'EcoCash',
             style: TextStyle(
               fontSize: useRail ? 24 : 22,
               fontWeight: FontWeight.w800,
@@ -53,13 +54,14 @@ class AppShell extends ConsumerWidget {
             ),
           ),
           const Spacer(),
-          GlassIconButton(
-            tooltip: 'Notices',
-            icon: Icons.notifications_none_rounded,
-            onPressed: () =>
-                context.go(auth.isStaff ? '/audit' : '/activity'),
-          ),
-          const SizedBox(width: 8),
+          if (!aiHome)
+            GlassIconButton(
+              tooltip: 'Notices',
+              icon: Icons.notifications_none_rounded,
+              onPressed: () =>
+                  context.go(auth.isStaff ? '/audit' : '/activity'),
+            ),
+          if (!aiHome) const SizedBox(width: 8),
           Builder(
             builder: (context) => GlassIconButton(
               tooltip: 'Menu',
@@ -97,7 +99,7 @@ class AppShell extends ConsumerWidget {
           Expanded(
             child: Column(
               children: [
-                header,
+                if (!aiHome) header,
                 Expanded(child: ClipRect(child: child)),
                 if (demo.active && demo.script?.current != null)
                   const _DemoBar(),
@@ -109,7 +111,7 @@ class AppShell extends ConsumerWidget {
     } else {
       body = Column(
         children: [
-          header,
+          if (!aiHome) header,
           Expanded(child: ClipRect(child: child)),
           if (demo.active && demo.script?.current != null) const _DemoBar(),
           SafeArea(
@@ -149,21 +151,18 @@ class AppShell extends ConsumerWidget {
       if (location == '/pulse') return 0;
       return 4;
     }
-    if (location == '/send' || location == '/receipts') return 1;
-    if (location == '/insights') return 2;
-    if (location == '/activity') return 3;
-    if (location == '/home') return 0;
-    return 4;
+    if (location == '/send' ||
+        location == '/receipts' ||
+        location == '/voice' ||
+        location == '/ussd') {
+      return 1;
+    }
+    if (location == '/chat') return 0;
+    return 2;
   }
 
   String? _parentOf(bool staff, String location) {
-    const customerRoots = {
-      '/home',
-      '/send',
-      '/insights',
-      '/activity',
-      '/profile',
-    };
+    const customerRoots = {'/chat', '/send', '/profile'};
     const staffRoots = {'/pulse', '/queue', '/copilot', '/impact', '/profile'};
     if ((staff ? staffRoots : customerRoots).contains(location)) return null;
     if (location.startsWith('/pulse/case')) return '/copilot';
@@ -177,17 +176,10 @@ class AppShell extends ConsumerWidget {
       }
       return '/pulse';
     }
-    if (location == '/voice' ||
-        location == '/chat' ||
-        location == '/ussd' ||
-        location == '/coach' ||
-        location == '/scam' ||
-        location == '/accessibility' ||
-        location == '/search') {
-      return '/profile';
+    if (location == '/receipts' || location == '/voice' || location == '/ussd') {
+      return '/send';
     }
-    if (location == '/receipts') return '/send';
-    return staff ? '/pulse' : '/home';
+    return '/profile';
   }
 }
 
@@ -200,20 +192,18 @@ class _Tab {
 }
 
 const _customerTabs = [
-  _Tab('/home', 'Home', Icons.home_outlined, Icons.home_rounded),
+  _Tab(
+    '/chat',
+    'AI',
+    Icons.auto_awesome_outlined,
+    Icons.auto_awesome_rounded,
+  ),
   _Tab(
     '/send',
     'Pay',
     Icons.qr_code_scanner_rounded,
     Icons.qr_code_scanner_rounded,
   ),
-  _Tab(
-    '/insights',
-    'Insights',
-    Icons.donut_large_outlined,
-    Icons.donut_large_rounded,
-  ),
-  _Tab('/activity', 'History', Icons.history_rounded, Icons.history_rounded),
   _Tab(
     '/profile',
     'Account',
@@ -260,18 +250,8 @@ class _ShamwariDrawer extends ConsumerWidget {
             ('/profile', 'Account', Icons.person_rounded),
           ]
         : const [
-            ('/home', 'Home', Icons.home_rounded),
+            ('/chat', 'AI', Icons.auto_awesome_rounded),
             ('/send', 'Pay', Icons.qr_code_scanner_rounded),
-            ('/insights', 'Insights', Icons.donut_large_rounded),
-            ('/activity', 'History', Icons.history_rounded),
-            ('/voice', 'Voice pay', Icons.mic_rounded),
-            ('/chat', 'Chat channel', Icons.chat_bubble_outline_rounded),
-            ('/ussd', 'USSD *151#', Icons.dialpad_rounded),
-            ('/coach', 'Coach', Icons.auto_awesome_rounded),
-            ('/scam', 'Scam check', Icons.shield_rounded),
-            ('/receipts', 'Scan a slip', Icons.receipt_long_rounded),
-            ('/accessibility', 'Accessibility', Icons.accessibility_new_rounded),
-            ('/search', 'Search', Icons.search_rounded),
             ('/profile', 'Account', Icons.person_rounded),
           ];
 

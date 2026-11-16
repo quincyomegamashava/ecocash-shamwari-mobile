@@ -36,8 +36,8 @@ class ForbiddenScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           FilledButton(
-            onPressed: () => context.go(staff ? '/pulse' : '/home'),
-            child: Text(staff ? 'Back to pulse' : 'Back home'),
+            onPressed: () => context.go(staff ? '/pulse' : '/chat'),
+            child: Text(staff ? 'Back to pulse' : 'Back to AI'),
           ),
         ],
       ),
