@@ -67,6 +67,9 @@ Future<void> _gallery(
   await _shoot(tester, '$prefix-login');
   if (contrastOnly) {
     await signIn(tester, 'desk-rudo');
+    await _until(tester, find.text('Shamwari · EcoCash AI'));
+    await _shoot(tester, '$prefix-chat');
+    _go(tester, '/home');
     await _until(tester, find.textContaining('Mhoro'));
     await _shoot(tester, '$prefix-home');
     _go(tester, '/accessibility');
@@ -80,6 +83,9 @@ Future<void> _gallery(
   }
 
   await signIn(tester, 'desk-rudo');
+  await _until(tester, find.text('Shamwari · EcoCash AI'));
+  await _shoot(tester, '$prefix-chat');
+  _go(tester, '/home');
   await _until(tester, find.textContaining('Mhoro'));
   await _shoot(tester, '$prefix-home');
 

@@ -6,6 +6,11 @@ import 'package:shamwari_mobile/widgets/pin_pad.dart';
 
 import 'support/app_harness.dart';
 
+Finder _nav() => find.byKey(const Key('shamwari-nav'));
+
+GoRouter _router(WidgetTester tester) =>
+    GoRouter.of(tester.element(_nav()));
+
 void main() {
   testWidgets('login reaches Rudo’s book and a wrong desk stays on the form', (
     tester,
@@ -33,6 +38,10 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('sign-in')));
     await pumpFrames(tester, 12);
+    expect(find.text('Shamwari · EcoCash AI'), findsOneWidget);
+
+    _router(tester).go('/home');
+    await pumpFrames(tester, 12);
     expect(find.text('US\$ 86.00'), findsWidgets);
     expect(find.textContaining('Term 2 school fees'), findsWidgets);
   });
@@ -57,7 +66,7 @@ void main() {
   ) async {
     await bootApp(tester, AppHarness());
     await signIn(tester, 'desk-rudo');
-    GoRouter.of(tester.element(find.text('US\$ 86.00'))).go('/send');
+    _router(tester).go('/send');
     await pumpFrames(tester, 10);
     expect(find.text('Send. Then confirm.'), findsOneWidget);
 
@@ -128,15 +137,19 @@ void main() {
   testWidgets('a new tab replaces the previous screen', (tester) async {
     await bootApp(tester, AppHarness());
     await signIn(tester, 'desk-rudo');
+    expect(find.text('Shamwari · EcoCash AI'), findsOneWidget);
+
+    _router(tester).go('/home');
+    await pumpFrames(tester, 10);
     expect(find.textContaining('Mhoro'), findsOneWidget);
     expect(find.text('US\$ 86.00'), findsWidgets);
 
-    GoRouter.of(tester.element(find.byKey(const Key('shamwari-nav')))).go('/coach');
+    _router(tester).go('/coach');
     await pumpFrames(tester, 6);
     expect(find.text('A coach inside the book.'), findsOneWidget);
     expect(find.textContaining('Mhoro'), findsNothing);
 
-    GoRouter.of(tester.element(find.byKey(const Key('shamwari-nav')))).go('/scam');
+    _router(tester).go('/scam');
     await pumpFrames(tester, 6);
     expect(find.text('Is this a lure?'), findsOneWidget);
     expect(find.text('A coach inside the book.'), findsNothing);
@@ -149,7 +162,7 @@ void main() {
   ) async {
     await bootApp(tester, AppHarness());
     await signIn(tester, 'desk-rudo');
-    GoRouter.of(tester.element(find.byKey(const Key('shamwari-nav')))).go('/send');
+    _router(tester).go('/send');
     await pumpFrames(tester, 12);
     await tester.scrollUntilVisible(
       find.byKey(const Key('prize-desk')),
@@ -180,12 +193,9 @@ void main() {
   testWidgets('chat and ussd open as plain text channels', (tester) async {
     await bootApp(tester, AppHarness());
     await signIn(tester, 'desk-rudo');
-    final router = GoRouter.of(
-      tester.element(find.byKey(const Key('shamwari-nav'))),
-    );
-    router.go('/chat');
+    final router = _router(tester);
+    expect(find.text('Shamwari · EcoCash AI'), findsOneWidget);
     await pumpFrames(tester, 8);
-    expect(find.text('Chat channel'), findsOneWidget);
     expect(find.textContaining('Shamwari chat'), findsOneWidget);
     expect(find.textContaining('WhatsApp'), findsNothing);
 
@@ -193,7 +203,7 @@ void main() {
     await pumpFrames(tester, 8);
     expect(find.text('USSD *151#'), findsOneWidget);
     expect(find.textContaining('*151#'), findsWidgets);
-    expect(find.text('Chat channel'), findsNothing);
+    expect(find.text('Shamwari · EcoCash AI'), findsNothing);
   });
 
   testWidgets('care home shows impact and a copilot case', (tester) async {
